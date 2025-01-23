@@ -34,8 +34,8 @@ int main()
   // -----------------------------------------
   // Must do this at very beginning - in any case before "stdio_init_all", otherwise USB stdio stuck
   // -----------------------------------------
-  VzPicoSys vzPicoSys;
-  int rc = vzPicoSys.init();
+  VzPicoSys * vzPicoSys = VzPicoSys::getInstance();
+  int rc = vzPicoSys->init();
   if(rc < 0)
   {
     fprintf(stderr, "*** ERROR: Init Vsys failed: %d\n", rc);
@@ -110,7 +110,7 @@ int main()
   // Main loop
   // --------------------------------------------------------------
 
-  print(log_info, "Default clock speed: %dMHz.", "", vzPicoSys.getCurrentClockSpeed());
+  print(log_info, "Default clock speed: %dMHz.", "", vzPicoSys->getCurrentClockSpeed());
 
   time_t sendDataComplete = time(NULL);
   uint cycle = 0;
@@ -122,7 +122,7 @@ int main()
 
     int  nextDue = 0;
     bool keepWifi = false;
-    bool clockSpeedIsDefault = vzPicoSys.isClockSpeedDefault();
+    bool clockSpeedIsDefault = vzPicoSys->isClockSpeedDefault();
 
     try
     {
@@ -138,7 +138,7 @@ int main()
           // Some meters depend on default clock speed - so enable
           if(! clockSpeedIsDefault)
           {
-            clockSpeedIsDefault = vzPicoSys.setCpuSpeedDefault();
+            clockSpeedIsDefault = vzPicoSys->setCpuSpeedDefault();
           }
           it->read();
         }
@@ -156,7 +156,7 @@ int main()
           // Also, WiFi does not work right on lower speeds
           if(! clockSpeedIsDefault)
           {
-            clockSpeedIsDefault = vzPicoSys.setCpuSpeedDefault();
+            clockSpeedIsDefault = vzPicoSys->setCpuSpeedDefault();
           }
 
           bool wifiConnected = wifi.isConnected();
@@ -188,7 +188,7 @@ int main()
       print(log_info, "Cycle %d: All meters and pending I/O processed. Next due: %ds. Napping ...", "", cycle, nextDue);
 
       // TODO: Make these metrics available as a meter (?)
-      print(log_debug, "Cycle %d, MEM: Used: %ld, Free: %ld", "", cycle, vzPicoSys.getMemUsed(), vzPicoSys.getMemFree());
+      print(log_debug, "Cycle %d, MEM: Used: %ld, Free: %ld", "", cycle, vzPicoSys->getMemUsed(), vzPicoSys->getMemFree());
     }
 
     // --------------------------------------------------------------
@@ -203,11 +203,14 @@ int main()
       // Blink LED for 10ms (depends on WiFi, so only if WiFi is on) saying: "WiFi is on"
       wifi.ledOn(10);
 
+      // Measure and remember voltage, also depends on WiFi (can be queried by meter afterwards)
+      vzPicoSys->measureVoltage();
       if((cycle % 10) == 0)
       {
-        // Seems to depend on WiFi chip - so do this only if WiFi is on
-        // TODO: Make these metrics available as a meter (?)
-        print(log_info, "Power Source: %s Voltage: %.2f", "", (vzPicoSys.isOnBattery() ? "Battery" : "USB"), vzPicoSys.getVoltage());
+        bool isOnBattery;
+        float voltage;
+        vzPicoSys->getVoltage(voltage, isOnBattery);
+        print(log_info, "Power Source: %s Voltage: %.2f", "", (isOnBattery ? "Battery" : "USB"), voltage);
       }
 
       // Shutdown Wifi if either it's worth (nextDue > wifiStopTime) or data sending 
@@ -224,9 +227,9 @@ int main()
     // Reduce clock speed after everything WiFi or peripheral is done
     if(clockSpeedIsDefault && ! wifi.isConnected())
     {
-      vzPicoSys.setCpuSpeedLow(lowCPUfactor);
+      vzPicoSys->setCpuSpeedLow(lowCPUfactor);
       // TODO: Make these metrics available as a meter (?)
-      vzPicoSys.printStatistics(log_info);
+      vzPicoSys->printStatistics(log_info);
       for (MapContainer::iterator it = mappings.begin(); it != mappings.end(); it++)
       {
         it->printStatistics(log_info);

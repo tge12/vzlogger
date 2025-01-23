@@ -108,6 +108,7 @@ ReadingIdentifier::Ptr reading_id_parse(meter_protocol_t protocol, const char *s
 	case meter_protocol_emonlib:
 	case meter_protocol_hcsr04:
 	case meter_protocol_w1tGpio:
+	case meter_protocol_selfmon:
 		rid = ReadingIdentifier::Ptr(new StringIdentifier(string));
 		break;
 

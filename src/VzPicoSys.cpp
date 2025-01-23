@@ -28,6 +28,16 @@
 
 extern char __StackLimit, __bss_end__;
 
+VzPicoSys * VzPicoSys::getInstance()
+{
+  static VzPicoSys * theInstance = NULL;
+  if(theInstance == NULL)
+  {
+    theInstance = new VzPicoSys();
+  }
+  return theInstance;
+}
+
 VzPicoSys::VzPicoSys()
 {
   accTimeLowCpu = 0;
@@ -39,6 +49,10 @@ VzPicoSys::VzPicoSys()
   defaultClockSpeed = (clock_get_hz(clk_sys) / 1000000);
 
   lastChange = time(NULL);
+
+  lastVoltageVal = 0;
+  lastVoltageTime = 0;
+  isOnBattery = false;
 
   adc_init();
 }
@@ -64,26 +78,12 @@ int VzPicoSys::init()
 }
 
 /** ============================================================
- * isOnBattery() 
+ * measureVoltage() and getVoltage() 
+ * This function can only be used when WiFi is initialized. So remember the last sample, so if the MeterPicoSelfmon
+ * asks for this value, we can return this
  *  ============================================================ */
 
-bool VzPicoSys::isOnBattery()
-{
-#if defined CYW43_WL_GPIO_VBUS_PIN
-  return(! cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN));
-#elif defined PICO_VBUS_PIN
-  gpio_set_function(PICO_VBUS_PIN, GPIO_FUNC_SIO);
-  return(! gpio_get(PICO_VBUS_PIN));
-#else
-  return false;
-#endif
-}
-
-/** ============================================================
- * getVoltage() 
- *  ============================================================ */
-
-float VzPicoSys::getVoltage()
+void VzPicoSys::measureVoltage()
 {
 #ifndef PICO_VSYS_PIN
   return 0;
@@ -118,14 +118,33 @@ float VzPicoSys::getVoltage()
   adc_run(false);
   adc_fifo_drain();
 
+# if defined CYW43_WL_GPIO_VBUS_PIN
+  isOnBattery = (! cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN));
+# elif defined PICO_VBUS_PIN
+  gpio_set_function(PICO_VBUS_PIN, GPIO_FUNC_SIO);
+  isOnBattery = (! gpio_get(PICO_VBUS_PIN));
+# endif
+
 # if CYW43_USES_VSYS_PIN
   cyw43_thread_exit();
 # endif
 
   // Calc voltage
   const float conversion_factor = 3.3f / (1 << 12);
-  return (vsys *3 * conversion_factor);
+
+  // Store for when queried by meter - then WiFi may be off
+  lastVoltageVal = (vsys *3 * conversion_factor);
+  struct timeval now;
+  gettimeofday(&now, NULL);
+  lastVoltageTime = now.tv_sec;
 #endif
+}
+
+time_t VzPicoSys::getVoltage(float & v, bool & b)
+{
+  v = lastVoltageVal;
+  b = isOnBattery;
+  return lastVoltageTime;
 }
 
 /** ============================================================

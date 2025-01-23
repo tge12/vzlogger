@@ -41,6 +41,8 @@ typedef enum meter_procotol {
 	meter_protocol_onboardTemp,
 	meter_protocol_emonlib,
 	meter_protocol_hcsr04,
-	meter_protocol_w1tGpio
+	meter_protocol_w1tGpio,
+	meter_protocol_selfmon,
+	meter_protocol_genericAdc
 } meter_protocol_t;
 #endif /* _meter_protocol_hpp_ */

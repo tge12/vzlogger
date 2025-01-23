@@ -98,6 +98,19 @@ else ( VZ_USE_METER_PICO_W1THERM_GPIO )
   set(pico_w1therm_gpio_srcs "")
 endif( VZ_USE_METER_PICO_W1THERM_GPIO )
 
+if( VZ_USE_METER_PICO_SELFMON )
+  set(pico_selfmon_srcs MeterPicoSelfmon ../../include/protocols/MeterPicoSelfmon.hpp)
+  include_directories(${CMAKE_CURRENT_LIST_DIR}/..)
+else ( VZ_USE_METER_PICO_SELFMON )
+  set(pico_selfmon_srcs "")
+endif( VZ_USE_METER_PICO_SELFMON )
+
+if( VZ_USE_METER_PICO_GENERIC_ADC )
+  set(pico_generic_adc_srcs MeterGenericADC ../../include/protocols/MeterGenericADC.hpp)
+else ( VZ_USE_METER_PICO_GENERIC_ADC )
+  set(pico_generic_adc_srcs "")
+endif( VZ_USE_METER_PICO_GENERIC_ADC )
+
 set(proto_srcs
   ${s0_srcs}
   ${d0_srcs}
@@ -113,6 +126,8 @@ set(proto_srcs
   ${pico_onboardTemp_srcs}
   ${pico_hcsr04_srcs}
   ${pico_w1therm_gpio_srcs}
+  ${pico_selfmon_srcs}
+  ${pico_generic_adc_srcs}
 )
 
 add_library(proto STATIC ${proto_srcs})

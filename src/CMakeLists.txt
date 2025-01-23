@@ -5,8 +5,8 @@
 #AM_LDFLAGS =
 
 option(VZ_BUILD_ON_PICO "Build on pico" ON)
-# add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_brunnen.h")
-add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_w1th_schlazi.h")
+add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_brunnen.h")
+# add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_w1th_schlazi.h")
 
 option(VZ_USE_THREADS "Use threads" ON)
 option(VZ_USE_INFLUXDB "Use influxdb" ON)
@@ -35,7 +35,7 @@ if(VZ_BUILD_ON_PICO)
   message(STATUS "Building VZ for Raspberry Pico ...")
 
 # Set this is building for a RPi Pico 1:
-# add_compile_options(-DPICO_RP2040)
+add_compile_options(-DPICO_RP2040)
 
   include_directories(${CMAKE_SOURCE_DIR}/include)
   include_directories(${CMAKE_SOURCE_DIR}/libs)
@@ -84,6 +84,8 @@ if(VZ_BUILD_ON_PICO)
   set(VZ_USE_METER_PICO_ONBOARD_TEMP ON)
   set(VZ_USE_METER_PICO_HCSR04 ON)
   set(VZ_USE_METER_PICO_W1THERM_GPIO ON)
+  set(VZ_USE_METER_PICO_SELFMON ON)
+  set(VZ_USE_METER_PICO_GENERIC_ADC ON)
 
   set(VZ_USE_CURL OFF)
   set(VZ_USE_ALTCP ON)

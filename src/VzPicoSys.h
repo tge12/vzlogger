@@ -16,10 +16,11 @@
 class VzPicoSys
 {
   public:
-    VzPicoSys();
+    static VzPicoSys * getInstance();
+
     int   init();
-    bool  isOnBattery();
-    float getVoltage();
+    void  measureVoltage();
+    time_t getVoltage(float & v, bool & b);
 
     bool  setCpuSpeedDefault();
     void  setCpuSpeedLow(int factor = 20);
@@ -32,12 +33,18 @@ class VzPicoSys
     void  printStatistics(log_level_t logLevel);
 
   private:
+    VzPicoSys();
+
     uint defaultClockSpeed;
 
     // Statistics counters
     uint accTimeLowCpu;
     uint accTimeDefaultCpu;
     time_t lastChange;
+
+    time_t lastVoltageTime;
+    float  lastVoltageVal;
+    bool   isOnBattery;
 };
 
 #endif // VZ_PICO_SYS_H
