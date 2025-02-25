@@ -32,7 +32,7 @@ ssize_t MeterPicoSelfmon::read(std::vector<Reading> &rds, size_t n)
 
   float values[4];
   values[0] = vpz->getMemFree();
-  values[1] = vpz->getMemUsed() + vpz->getMemFree();
+  values[1] = vpz->getMemTotal();
 
   bool isOnBattery;
   float voltage;

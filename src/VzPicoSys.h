@@ -12,6 +12,7 @@
 #define VZ_PICO_SYS_BATTERY_INFO_UNAVAIL 0x02
 
 #include <common.h>
+#include "vz_pico_inline_config.h"
 
 class VzPicoSys
 {
@@ -29,8 +30,12 @@ class VzPicoSys
 
     long  getMemUsed();
     long  getMemFree();
+    long  getMemTotal();
+
+    static const char * getVersion();
 
     void  printStatistics(log_level_t logLevel);
+    const char * getTimeString();
 
   private:
     VzPicoSys();
@@ -45,6 +50,8 @@ class VzPicoSys
     time_t lastVoltageTime;
     float  lastVoltageVal;
     bool   isOnBattery;
+
+    char currentTime[24];
 };
 
 #endif // VZ_PICO_SYS_H

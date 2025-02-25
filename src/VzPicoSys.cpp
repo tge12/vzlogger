@@ -17,6 +17,7 @@
 #include "hardware/clocks.h"
 #include "VzPicoSys.h"
 #include <malloc.h>
+#include "lwip/init.h"
 
 #ifndef PICO_POWER_SAMPLE_COUNT
 # define PICO_POWER_SAMPLE_COUNT 3
@@ -55,6 +56,7 @@ VzPicoSys::VzPicoSys()
   isOnBattery = false;
 
   adc_init();
+  currentTime[0] = 0;
 }
 
 /** ============================================================
@@ -149,22 +151,13 @@ time_t VzPicoSys::getVoltage(float & v, bool & b)
 
 /** ============================================================
  * getMemUsed
- *  ============================================================ */
-
-long VzPicoSys::getMemUsed()
-{
-  struct mallinfo m = mallinfo();
-  return m.uordblks;
-}
-
-/** ============================================================
+ * getMemTotal
  * getMemFree
  *  ============================================================ */
 
-long VzPicoSys::getMemFree()
-{
-  return ((&__StackLimit  - &__bss_end__) - getMemUsed());
-}
+long VzPicoSys::getMemUsed()  { struct mallinfo m = mallinfo(); return m.uordblks; }
+long VzPicoSys::getMemTotal() { return (&__StackLimit - &__bss_end__); }
+long VzPicoSys::getMemFree()  { return (getMemTotal() - getMemUsed()); }
 
 /** ============================================================
  * getStatistics
@@ -202,13 +195,20 @@ void VzPicoSys::setCpuSpeedLow(int factor)
   print(log_info, "Set low-power CPU speed %dMhz ...", "", getCurrentClockSpeed());
 }
 
-uint VzPicoSys::getCurrentClockSpeed()
+uint VzPicoSys::getCurrentClockSpeed() { return (frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_SYS) / 1000); }
+bool VzPicoSys::isClockSpeedDefault() { return (getCurrentClockSpeed() == defaultClockSpeed); }
+const char * VzPicoSys::getVersion() { return PACKAGE "/" VERSION " (LwIP " LWIP_VERSION_STRING ")"; }
+const char * VzPicoSys::getTimeString()
 {
-  return (frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_SYS) / 1000);
-}
+  struct timeval now;
+  gettimeofday(&now, NULL);
+  extern time_t sysRefTime;
+  now.tv_sec += sysRefTime + tzOffset;
+  struct tm tm;
+  struct tm * timeinfo = localtime_r(&now.tv_sec, &tm);
 
-bool VzPicoSys::isClockSpeedDefault()
-{
-  return (getCurrentClockSpeed() == defaultClockSpeed);
-}
+  /* format timestamp */
+  strftime(currentTime, 18, "[%b %d %H:%M:%S]", timeinfo);
 
+  return currentTime;
+}

@@ -33,14 +33,16 @@
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
 
+#define ADC_FIRST 26 // GPIO pin 26
+
 MeterGenericADC::MeterGenericADC(std::list<Option> options) : Protocol("genericAdc")
 {
   OptionList optlist;
   const char * optName;
   try
   {
-    optName = "dataPin"; dataPin = optlist.lookup_int(options, optName);
-    optName = "factor";  factor = optlist.lookup_double(options, optName);
+    optName = "adcNum"; adcNum = optlist.lookup_int(options, optName);
+    optName = "factor"; factor = optlist.lookup_double(options, optName);
   }
   catch (vz::VZException &e)
   {
@@ -56,15 +58,16 @@ MeterGenericADC::MeterGenericADC(std::list<Option> options) : Protocol("genericA
   }
   catch (vz::VZException &e) { }
 
-  id = new NilIdentifier();
+  id = ReadingIdentifier::Ptr(new NilIdentifier());
 
-  print(log_debug, "Created MeterGenericADC (GPIO %d)", "", dataPin);
+  print(log_debug, "Created MeterGenericADC (GPIO %d, ADC %d)", "", ADC_FIRST + adcNum, adcNum);
 }
 
 MeterGenericADC::~MeterGenericADC() {}
 
 int MeterGenericADC::open()
 {
+  uint dataPin = ADC_FIRST + adcNum;
   adc_gpio_init(dataPin);
   if(ctrlPin >= 0)
   {
@@ -78,12 +81,14 @@ int MeterGenericADC::close() { return SUCCESS; }
 
 ssize_t MeterGenericADC::read(std::vector<Reading> &rds, size_t n)
 {
-  print(log_debug, "Reading MeterGenericADC at GPIO %d", "", dataPin);
+  uint dataPin = ADC_FIRST + adcNum;
+  print(log_debug, "Reading MeterGenericADC at GPIO %d (ADC %d)", "", dataPin, adcNum);
 
   if(ctrlPin >= 0)
   {
     print(log_debug, "Enabling control PIN %d", "", ctrlPin);
     gpio_put(ctrlPin, 1);
+    sleep_us(10);
   }
 
   // The ADC returns something between 0 .. 4096, which means 0 .. 3.3V
@@ -103,8 +108,7 @@ ssize_t MeterGenericADC::read(std::vector<Reading> &rds, size_t n)
     gpio_put(ctrlPin, 0);
   }
 
-  float val = adcVal * factor * ((3.3/1000.0) / (ADC_COUNTS));
-
+  float val = adcVal * factor * (3.3 / (ADC_COUNTS));
   print(log_debug, "MeterGenericADC::read: ADC %d -> %.2f", "", adcVal, val);
 
   rds[0].value(val);

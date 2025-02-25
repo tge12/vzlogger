@@ -9,5 +9,12 @@ add_subdirectory(EmonLib)
 add_subdirectory(HC-SR04)
 add_subdirectory(pico-onewire)
 
+add_subdirectory(ePaper/Config)
+add_subdirectory(ePaper/e-Paper)
+add_subdirectory(ePaper/Fonts)
+add_subdirectory(ePaper/GUI)
+
+add_subdirectory(pico-vfs)
+
 # TGE Does not work like that: add_definitions(-DBUILD_SHARED_LIBS=OFF)
 

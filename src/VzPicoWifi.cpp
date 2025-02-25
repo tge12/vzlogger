@@ -32,7 +32,7 @@ static const char * statusTxt[] = { "Wifi down", "Connected", "Connection failed
                                     "No matching SSID found", "Authentication failure" };
 static const char * wifiLogId = "wifi";
 
-VzPicoWifi::VzPicoWifi(const char * hn, uint numRetries, uint timeout) : sysRefTime(0), firstTime(true), numUsed(0), accTimeUp(0), accTimeDown(0), accTimeConnecting(0), initialized(false)
+VzPicoWifi::VzPicoWifi(const char * hn, uint numRetries, uint timeout) : sysRefTime(0), firstTime(true), numUsed(0), accTimeConnecting(0), accTimeUp(0), accTimeDown(0), initialized(false)
 {
   retries = numRetries;
   connTimeout = timeout;
@@ -66,7 +66,8 @@ bool VzPicoWifi::enable(uint enableRetries)
     print(log_info, "Enabling WiFi ...", wifiLogId);
     // --------------------------------------------------------------
 
-    if(rc = cyw43_arch_init())
+    rc = cyw43_arch_init();
+    if(rc != 0)
     {
       print(log_error, "WiFi init failed. Error %d.", wifiLogId, rc);
       return false;
@@ -94,7 +95,7 @@ bool VzPicoWifi::enable(uint enableRetries)
   accTimeDown += (now - lastChange);
   lastChange = now;
 
-  for(int i = 0; i < (enableRetries > 0 ? enableRetries : retries); i++)
+  for(uint i = 0; i < (enableRetries > 0 ? enableRetries : retries); i++)
   {
     // --------------------------------------------------------------
     print(log_debug, "Connecting WiFi %s (%d) as '%s' ...", wifiLogId, wifiSSID, i, hostname.c_str());

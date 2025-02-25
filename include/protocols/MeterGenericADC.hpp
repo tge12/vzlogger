@@ -47,12 +47,12 @@ class MeterGenericADC : public vz::protocol::Protocol
     ssize_t read(std::vector<Reading> &rds, size_t n);
 
   private:
-    uint  dataPin;  // Which ADC pin, starting with 0 from 26
+    uint  adcNum;   // Which ADC pin, starting with 0 from 26
     int   ctrlPin;  // Control PIN, to support things like:
                     // https://electronics.stackexchange.com/questions/39412/measure-lithium-ion-battery-voltage-thus-remaining-capacity
     float factor;   // Conversion factor
 
-    NilIdentifier * id;
+    ReadingIdentifier::Ptr id;
 };
 
 #endif /* _METER_GENERIC_ADC_H_ */

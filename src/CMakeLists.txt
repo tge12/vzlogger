@@ -40,6 +40,9 @@ add_compile_options(-DPICO_RP2040)
   include_directories(${CMAKE_SOURCE_DIR}/include)
   include_directories(${CMAKE_SOURCE_DIR}/libs)
   include_directories(${CMAKE_SOURCE_DIR}/libs/EmonLib)
+  include_directories(${CMAKE_SOURCE_DIR}/libs/ePaper/Config)
+  include_directories(${CMAKE_SOURCE_DIR}/libs/ePaper/GUI)
+  include_directories(${CMAKE_SOURCE_DIR}/libs/ePaper/e-Paper)
   include_directories(${CMAKE_SOURCE_DIR})
 
   include_directories(${PICO_SDK_PATH}/lib/lwip/src/include/compat/posix
@@ -51,6 +54,7 @@ add_compile_options(-DPICO_RP2040)
                     ${PICO_SDK_PATH}/src/rp2_common/hardware_uart/include
                     ${PICO_SDK_PATH}/src/rp2_common/hardware_adc/include
                     ${PICO_SDK_PATH}/src/rp2_common/hardware_pio/include
+                    ${PICO_SDK_PATH}/src/rp2_common/hardware_spi/include
                     ${PICO_SDK_PATH}/src/rp2_common/pico_cyw43_arch/include
                     ${PICO_SDK_PATH}/src/rp2_common/pico_cyw43_driver/include
                     ${PICO_SDK_PATH}/src/rp2_common/pico_async_context/include
@@ -63,6 +67,8 @@ add_compile_options(-DPICO_RP2040)
                     $<TARGET_PROPERTY:pico_rand,INTERFACE_INCLUDE_DIRECTORIES>
   )
 
+  include_directories(${CMAKE_SOURCE_DIR}/libs/pico-vfs/include)
+  include_directories(${CMAKE_SOURCE_DIR}/libs/pico-vfs/vendor/littlefs)
 
 # Build the absolute minimum - switch on as needed:
   set(VZ_USE_THREADS OFF)
@@ -93,6 +99,11 @@ add_compile_options(-DPICO_RP2040)
 
   # add_compile_options(-DPICO_DEBUG_MALLOC=1 -DPICO_PANIC_FUNCTION=vzlogger_panic)
   add_compile_options(-DPICO_PANIC_FUNCTION=vzlogger_panic)
+  # TGE:
+  add_compile_options(-Wno-unused-variable -Wno-unused-parameter -Wno-reorder)
+
+  set(VZ_USE_FSYS_SD ON)
+  set(VZ_USE_FSYS_LITTLE ON)
 
 else(VZ_BUILD_ON_PICO)
   add_compile_options(-DVZ_USE_THREADS=1)
@@ -125,6 +136,8 @@ if(VZ_BUILD_ON_PICO)
     Ntp.cpp
     VzPicoWifi.cpp
     VzPicoSys.cpp
+    VzPicoFsys.cpp
+    LocalGUI.cpp
   )
 else(VZ_BUILD_ON_PICO)
   set(vzlogger_srcs
@@ -185,8 +198,31 @@ if(VZ_BUILD_ON_PICO)
           emonlib
           distance-sensor
           pico_one_wire
-          )
+          ePaper GUI Fonts Config hardware_spi
+          blockdevice filesystem filesystem_vfs
+  )
+
+  if(VZ_USE_FSYS_SD)
+    message(STATUS "SD card filesys enabled.")
+    target_compile_options(vzlogger PUBLIC -DVZ_FSYS_SD=1)
+    target_link_libraries(vzlogger blockdevice_sd)
+  endif(VZ_USE_FSYS_SD)
+  if(VZ_USE_FSYS_FLASH)
+    target_compile_options(vzlogger PUBLIC -DVZ_FSYS_FLASH=1)
+    target_link_libraries(vzlogger blockdevice_flash)
+  endif(VZ_USE_FSYS_FLASH)
+  if(VZ_USE_FSYS_FAT)
+    target_compile_options(vzlogger PUBLIC -DVZ_FSYS_FAT=1)
+    target_link_libraries(vzlogger filesystem_fat)
+  endif(VZ_USE_FSYS_FAT)
+  if(VZ_USE_FSYS_LITTLE)
+    target_compile_options(vzlogger PUBLIC -DVZ_FSYS_LITTLE=1)
+    target_link_libraries(vzlogger filesystem_littlefs)
+  endif(VZ_USE_FSYS_LITTLE)
+
 #  target_link_libraries(vzlogger -fno-omit-frame-pointer -mapcs-frame -funwind-tables -Wl,-wrap,malloc -Wl,-wrap,calloc -Wl,-wrap,realloc -Wl,-wrap,free)
+
+  # TGE Not needed - we do it in main: pico_enable_filesystem(${CMAKE_PROJECT_NAME})
 
   pico_enable_stdio_usb(vzlogger 1)
   pico_add_extra_outputs(vzlogger)

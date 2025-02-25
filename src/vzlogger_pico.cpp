@@ -4,9 +4,7 @@
 
 using namespace std;
 
-#include "lwip/init.h"
 #include "pico/stdlib.h"
-// #include "pico/cyw43_arch.h"
 #include "hardware/watchdog.h"
 
 #include <Config_Options.hpp>
@@ -14,9 +12,13 @@ using namespace std;
 
 #include "VzPicoWifi.h"
 #include "VzPicoSys.h"
+#include "VzPicoFsys.h"
+
+#include "LocalGUI.h"
 
 // No major benefit from being user-configurable
 static const uint mainLoopSleep = 1000;    // in ms
+static bool fsInitialized = false;
 
 // --------------------------------------------------------------
 // Global vars referenced elsewhere
@@ -47,12 +49,44 @@ int main()
   //  sudo screen -L /dev/ttyACM0
   sleep_ms(5000);
 
-  printf("--------------------------------------------------------------\n");
-  printf("** vzlogger %s/%s (LwIP %s) starting up ...\n", PACKAGE, VERSION, LWIP_VERSION_STRING);
-  printf("** Connecting WiFi ...\n");
-  printf("--------------------------------------------------------------\n");
-
   options.verbosity(5); // INFO at startup, will be overwritten when parsing config
+
+#ifdef VZ_FSYS_SD
+  print(log_info, "Init FS ...", "");
+  VzPicoDiskDeviceSD sdCard;
+  VzPicoFsysLittle littleFS(sdCard);
+  littleFS.init();
+  littleFS.mount("/");
+  print(log_info, "Init FS done.", "");
+
+  FILE *fp = fopen("/vzlogger.log", "r");
+  if (fp == NULL)
+  {
+    printf("fopen error: %s\n", strerror(errno));
+  }
+  else
+  {
+// TODO - This should go into a dedicated program
+    printf("Found existing vzlogger.log ... dumping ...\n");
+    char buf[1024];
+    while(fgets(buf, sizeof(buf) - 1, fp))
+    {
+      printf(">>> %s", buf);
+    }
+
+    int err = fclose(fp);
+    if (err == -1)
+    {
+      printf("close error: %s\n", strerror(errno));
+    }
+  }
+  fsInitialized = true;
+#endif // VZ_FSYS_SD
+
+  print(log_info, "--------------------------------------------------------------", "");
+  print(log_info, "%s starting up ...", VzPicoSys::getVersion(), "");
+  print(log_info, "Connecting WiFi ...", "");
+  print(log_info, "--------------------------------------------------------------", "");
 
   VzPicoWifi wifi(myHostname);
   if(! wifi.init())
@@ -86,6 +120,13 @@ int main()
     print(log_alert, "No meters found - quitting!", NULL);
     return EXIT_FAILURE;
   }
+
+  // --------------------------------------------------------------
+  print(log_debug, "Initializing local GUI ...", "");
+  // --------------------------------------------------------------
+
+//  LocalGUI * gui = LocalGUI::getInstance();
+//  gui->init();
 
   // --------------------------------------------------------------
   print(log_debug, "===> Start meters", "");
@@ -227,13 +268,18 @@ int main()
     // Reduce clock speed after everything WiFi or peripheral is done
     if(clockSpeedIsDefault && ! wifi.isConnected())
     {
-      vzPicoSys->setCpuSpeedLow(lowCPUfactor);
-      // TODO: Make these metrics available as a meter (?)
+      if(lowCPUfactor > 0)
+      {
+        vzPicoSys->setCpuSpeedLow(lowCPUfactor);
+      }
+
       vzPicoSys->printStatistics(log_info);
       for (MapContainer::iterator it = mappings.begin(); it != mappings.end(); it++)
       {
         it->printStatistics(log_info);
       }
+
+//      gui->showData();
     }
 
     // Sleep a while ...
@@ -262,19 +308,10 @@ void print(log_level_t level, const char *format, const char *id, ...)
   char prefix[24];
   if(sysRefTime > 0)
   {
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    now.tv_sec += sysRefTime + tzOffset;
-    struct tm tm;
-    struct tm * timeinfo = localtime_r(&now.tv_sec, &tm);
-
-    /* format timestamp */
-    size_t pos = strftime(prefix, 18, "[%b %d %H:%M:%S]", timeinfo);
-
-    /* format section */
+    strcpy(prefix, VzPicoSys::getInstance()->getTimeString());
     if (id)
     {
-      snprintf(prefix + pos, 7, "[%s]", (char *)id);
+      snprintf(prefix + strlen(prefix), 7, "[%s]", (char *)id);
     }
   }
   else
@@ -284,9 +321,28 @@ void print(log_level_t level, const char *format, const char *id, ...)
 
   va_list args;
   va_start(args, id);
+
   printf((sysRefTime > 0 ? "%-24s" : "%s"), prefix);
   vprintf(format, args);
   printf("\n");
+
+  if(fsInitialized)
+  {
+    FILE *fp = fopen("/vzlogger.log", "a+");
+    if (fp == NULL)
+    {
+      printf("fopen error: %s\n", strerror(errno));
+    }
+    fprintf(fp, (sysRefTime > 0 ? "%-24s" : "%s"), prefix);
+    vfprintf(fp, format, args);
+    fprintf(fp, "\n");
+    int err = fclose(fp);
+    if (err == -1)
+    {
+      printf("close error: %s\n", strerror(errno));
+    }
+  }
+
   va_end(args);
 }
 
@@ -298,6 +354,7 @@ extern "C" void vzlogger_panic(const char * fmt, ...)
 {
   extern char __StackLimit, __bss_end__;
   printf("PANIC: %s stacklimit: %p, BSS end: %p, heap: %d, stack: %d\n", fmt, &__StackLimit, &__bss_end__, PICO_HEAP_SIZE, PICO_STACK_SIZE);
+  print(log_error, "PANIC: %s stacklimit: %p, BSS end: %p, heap: %d, stack: %d", "", fmt, &__StackLimit, &__bss_end__, PICO_HEAP_SIZE, PICO_STACK_SIZE);
   watchdog_enable(1, 1);
 }
 
