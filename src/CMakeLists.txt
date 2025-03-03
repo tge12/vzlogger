@@ -102,8 +102,9 @@ add_compile_options(-DPICO_RP2040)
   # TGE:
   add_compile_options(-Wno-unused-variable -Wno-unused-parameter -Wno-reorder)
 
-  set(VZ_USE_FSYS_SD ON)
-  set(VZ_USE_FSYS_LITTLE ON)
+  set(VZ_USE_FSYS_SD OFF)
+  set(VZ_USE_FSYS_LITTLE OFF)
+  set(VZ_USE_LOCAL_GUI ON)
 
 else(VZ_BUILD_ON_PICO)
   add_compile_options(-DVZ_USE_THREADS=1)
@@ -137,7 +138,7 @@ if(VZ_BUILD_ON_PICO)
     VzPicoWifi.cpp
     VzPicoSys.cpp
     VzPicoFsys.cpp
-    LocalGUI.cpp
+    # LocalGUI.cpp
   )
 else(VZ_BUILD_ON_PICO)
   set(vzlogger_srcs
@@ -186,6 +187,10 @@ if(VZ_BUILD_ON_PICO)
    set(vz_pico_tls_libs "")
   endif( VZ_USE_HTTPS )
 
+  if(VZ_USE_LOCAL_GUI)
+   target_compile_options(vz PUBLIC -DVZ_USE_LOCAL_GUI)
+  endif(VZ_USE_LOCAL_GUI)
+
   target_compile_options(vz PUBLIC -fexceptions -DVZ_PICO)
   target_link_libraries(vzlogger
           pico_cyw43_arch_lwip_threadsafe_background
@@ -198,7 +203,6 @@ if(VZ_BUILD_ON_PICO)
           emonlib
           distance-sensor
           pico_one_wire
-          ePaper GUI Fonts Config hardware_spi
           blockdevice filesystem filesystem_vfs
   )
 

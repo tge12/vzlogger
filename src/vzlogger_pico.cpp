@@ -14,7 +14,7 @@ using namespace std;
 #include "VzPicoSys.h"
 #include "VzPicoFsys.h"
 
-#include "LocalGUI.h"
+// #include "LocalGUI.h"
 
 // No major benefit from being user-configurable
 static const uint mainLoopSleep = 1000;    // in ms
@@ -59,8 +59,8 @@ int main()
   littleFS.mount("/");
   print(log_info, "Init FS done.", "");
 
-  FILE *fp = fopen("/vzlogger.log", "r");
-  if (fp == NULL)
+  FILE * fp = fopen("/vzlogger.log", "r");
+  if(fp == NULL)
   {
     printf("fopen error: %s\n", strerror(errno));
   }
@@ -84,7 +84,7 @@ int main()
 #endif // VZ_FSYS_SD
 
   print(log_info, "--------------------------------------------------------------", "");
-  print(log_info, "%s starting up ...", VzPicoSys::getVersion(), "");
+  print(log_info, "%s starting up ...", "", VzPicoSys::getVersion());
   print(log_info, "Connecting WiFi ...", "");
   print(log_info, "--------------------------------------------------------------", "");
 
@@ -121,9 +121,9 @@ int main()
     return EXIT_FAILURE;
   }
 
-  // --------------------------------------------------------------
-  print(log_debug, "Initializing local GUI ...", "");
-  // --------------------------------------------------------------
+// --------------------------------------------------------------
+// print(log_debug, "Initializing local GUI ...", "");
+// --------------------------------------------------------------
 
 //  LocalGUI * gui = LocalGUI::getInstance();
 //  gui->init();
@@ -328,8 +328,8 @@ void print(log_level_t level, const char *format, const char *id, ...)
 
   if(fsInitialized)
   {
-    FILE *fp = fopen("/vzlogger.log", "a+");
-    if (fp == NULL)
+    FILE * fp = fopen("/vzlogger.log", "a+");
+    if(fp == NULL)
     {
       printf("fopen error: %s\n", strerror(errno));
     }

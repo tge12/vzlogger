@@ -16,5 +16,3 @@ add_subdirectory(ePaper/GUI)
 
 add_subdirectory(pico-vfs)
 
-# TGE Does not work like that: add_definitions(-DBUILD_SHARED_LIBS=OFF)
-

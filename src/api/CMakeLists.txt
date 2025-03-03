@@ -4,6 +4,7 @@ if(VZ_BUILD_ON_PICO)
  set(api_srcs
      Volkszaehler.cpp
      Null.cpp
+     LocalGUI.cpp
      LwipIF.cpp)
 else(VZ_BUILD_ON_PICO)
  set(api_srcs
@@ -29,7 +30,14 @@ else(VZ_USEMYSMARTGRID)
 endif(VZ_USE_MYSMARTGRID)
 
 if(VZ_BUILD_ON_PICO)
+  include_directories(${CMAKE_CURRENT_LIST_DIR}/..)
+
   add_library(vz-api STATIC ${api_srcs} ${api_srcs_influxdb} ${api_srcs_mysmartgrid})
+  target_compile_options(vz-api PUBLIC -fexceptions -DVZ_PICO)
+if(VZ_USE_LOCAL_GUI)
+  target_link_libraries(vz-api ePaper GUI Fonts Config hardware_spi)
+endif(VZ_USE_LOCAL_GUI)
+
 else(VZ_BUILD_ON_PICO)
   add_library(vz-api ${api_srcs} ${api_srcs_influxdb} ${api_srcs_mysmartgrid})
 endif(VZ_BUILD_ON_PICO)
@@ -37,8 +45,4 @@ endif(VZ_BUILD_ON_PICO)
 install(TARGETS vz-api
 	ARCHIVE DESTINATION lib/static COMPONENT libraries
 	LIBRARY DESTINATION lib COMPONENT libraries)
-
-if(VZ_BUILD_ON_PICO)
- target_compile_options(vz-api PUBLIC -fexceptions -DVZ_PICO)
-endif(VZ_BUILD_ON_PICO)
 

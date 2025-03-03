@@ -44,6 +44,10 @@
 # include <api/MySmartGrid.hpp>
 #endif // VZ_USE_API_MYSMARTGRID
 
+#ifdef VZ_USE_LOCAL_GUI
+# include <api/LocalGUI.hpp>
+#endif // VZ_USE_LOCAL_GUI
+
 #include <api/Null.hpp>
 #include <api/Volkszaehler.hpp>
 
@@ -152,6 +156,14 @@ vz::shared_ptr<vz::ApiIF> Channel::connect(Ptr this_shared)
     return vz::ApiIF::Ptr(new vz::api::InfluxDB(this_shared this->options()));
   }
 #endif // VZ_USE_API_INFLUXDB
+
+#ifdef VZ_USE_LOCAL_GUI
+  if (0 == strcasecmp(apiProtocol().c_str(), "localGUI"))
+  {
+    print(log_debug, "Using LocalGUI API.", name());
+    return vz::ApiIF::Ptr(new vz::api::LocalGUI(this_shared, this->options()));
+  }
+#endif // VZ_USE_LOCAL_GUI
 
   if (0 == strcasecmp(apiProtocol().c_str(), "null"))
   {

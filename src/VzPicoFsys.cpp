@@ -23,7 +23,7 @@ VzPicoFsys::VzPicoFsys(VzPicoDiskDevice & device)
 }
 bool VzPicoFsys::mount(const char * dir, bool create)
 {
-  print(log_info, "Mounting FS on %s", "", dir);
+  print(log_info, "Mounting FS on %s ...", "", dir);
   int err = fs_mount("/", fs, dev);
   if (err == -1 && create)
   {
@@ -34,6 +34,7 @@ bool VzPicoFsys::mount(const char * dir, bool create)
       print(log_error, "FS format error: %s", "", strerror(errno));
       return false;
     }
+    print(log_info, "Formatting done. Mounting FS on %s ...", "", dir);
     err = fs_mount("/", fs, dev);
     if (err == -1)
     {
@@ -41,6 +42,7 @@ bool VzPicoFsys::mount(const char * dir, bool create)
       return false;
     }
   }
+  print(log_info, "Mounted FS on %s.", "", dir);
   return true;
 }
 
@@ -48,6 +50,7 @@ bool VzPicoFsys::mount(const char * dir, bool create)
 VzPicoFsysFAT::VzPicoFsysFAT(VzPicoDiskDevice & device) : VzPicoFsys(device) { }
 bool VzPicoFsysFAT::init()
 {
+  print(log_debug, "Creating FAT filesystem ...", "");
   fs = filesystem_fat_create();
   if(! fs) { print(log_error, "Cound not create FAT filesystem: %s", "", strerror(errno)); }
   return (dev != NULL && fs != NULL);
@@ -58,6 +61,7 @@ bool VzPicoFsysFAT::init()
 VzPicoFsysLittle::VzPicoFsysLittle(VzPicoDiskDevice & device) : VzPicoFsys(device) { }
 bool VzPicoFsysLittle::init()
 {
+  print(log_debug, "Creating LittleFS filesystem ...", "");
   fs = filesystem_littlefs_create(500, 16);
   if(! fs) { print(log_error, "Cound not create LittleFS filesystem: %s", "", strerror(errno)); }
   return (dev != NULL && fs != NULL);
@@ -69,6 +73,7 @@ VzPicoDiskDeviceFlash::VzPicoDiskDeviceFlash(uint s, uint so)
 {
   uint size = (s == 0 ? PICO_FS_DEFAULT_SIZE : s);
   uint startOffset = (so == 0 ? (PICO_FLASH_SIZE_BYTES - size) : so);
+  print(log_debug, "Creating Flash disk device ...", "");
   dev = blockdevice_flash_create(startOffset, size);
   if(! dev) { print(log_error, "Cound not create Flash disk device: %s", "", strerror(errno)); }
 }
@@ -77,6 +82,7 @@ VzPicoDiskDeviceFlash::VzPicoDiskDeviceFlash(uint s, uint so)
 #ifdef VZ_FSYS_SD
 VzPicoDiskDeviceSD::VzPicoDiskDeviceSD(uint spiNum, uint txPin, uint rxPin, uint sckPin, uint csnPin)
 {
+  print(log_debug, "Creating SD card disk device ...", "");
   dev = blockdevice_sd_create(spiNum == 0 ? spi0 : spi1, txPin, rxPin, sckPin, csnPin, 24 * MHZ, false);
   if(! dev) { print(log_error, "Cound not create SD card disk device: %s", "", strerror(errno)); }
 }
