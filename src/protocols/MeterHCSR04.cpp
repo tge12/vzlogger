@@ -86,16 +86,18 @@ ssize_t MeterHCSR04::read(std::vector<Reading> &rds, size_t n)
 
   // Trigger background sense
   hcsr04->TriggerRead();
+  print(log_debug, "Sent HCSR04 trigger signal. Waiting for echo ... ", "");
 
   // wait for sensor to get a result
+  uint waitForEcho = 10; // Wait at most 1s
   while (hcsr04->is_sensing)
   {
     sleep_us(100);
+    if(waitForEcho-- == 0) { return 0; } // Timed out
   }
 
   // Read result
   print(log_debug, "MeterHCSR04::read: Dist %dcm", "", hcsr04->distance);
-  print(log_debug, "MeterHCSR04::read: %d, %d", "", rds.size(), n);
 
   rds[0].value(hcsr04->distance);
   rds[0].identifier(ids[0]);

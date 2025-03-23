@@ -5,6 +5,7 @@
 #endif
 #ifdef VZ_FSYS_SD
 # include "blockdevice/sd.h"
+# define VZ_SD_IO_SPEED 5  /* In MHz */
 #endif
 #ifdef VZ_FSYS_FAT
 # include "filesystem/fat.h"
@@ -83,7 +84,8 @@ VzPicoDiskDeviceFlash::VzPicoDiskDeviceFlash(uint s, uint so)
 VzPicoDiskDeviceSD::VzPicoDiskDeviceSD(uint spiNum, uint txPin, uint rxPin, uint sckPin, uint csnPin)
 {
   print(log_debug, "Creating SD card disk device ...", "");
-  dev = blockdevice_sd_create(spiNum == 0 ? spi0 : spi1, txPin, rxPin, sckPin, csnPin, 24 * MHZ, false);
+  dev = blockdevice_sd_create(spiNum == 0 ? spi0 : spi1, txPin, rxPin, sckPin, csnPin, VZ_SD_IO_SPEED * MHZ, false);
+  print(log_debug, "Created SD card disk device. SPI baudrate: %dHz", "", spi_get_baudrate(spiNum == 0 ? spi0 : spi1));
   if(! dev) { print(log_error, "Cound not create SD card disk device: %s", "", strerror(errno)); }
 }
 #endif

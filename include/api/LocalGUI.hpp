@@ -67,6 +67,8 @@ class LocalGUIDisplay
     uint8_t * contentCanvas;
     uint      refreshCount;
     bool      initialized;
+    time_t    lastUpdate;
+    uint      prevNumLines;
 };
 
 } // namespace api

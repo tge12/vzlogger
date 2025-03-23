@@ -102,8 +102,8 @@ add_compile_options(-DPICO_RP2040)
   # TGE:
   add_compile_options(-Wno-unused-variable -Wno-unused-parameter -Wno-reorder)
 
-  set(VZ_USE_FSYS_SD OFF)
-  set(VZ_USE_FSYS_LITTLE OFF)
+  set(VZ_USE_FSYS_SD ON)
+  set(VZ_USE_FSYS_LITTLE ON)
   set(VZ_USE_LOCAL_GUI ON)
 
 else(VZ_BUILD_ON_PICO)
@@ -138,7 +138,7 @@ if(VZ_BUILD_ON_PICO)
     VzPicoWifi.cpp
     VzPicoSys.cpp
     VzPicoFsys.cpp
-    # LocalGUI.cpp
+    VzPicoLogger.cpp
   )
 else(VZ_BUILD_ON_PICO)
   set(vzlogger_srcs

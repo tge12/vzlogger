@@ -2,6 +2,7 @@
 #ifndef VZ_PICO_FSYS_H
 #define VZ_PICO_FSYS_H
 
+#include <hardware/spi.h>
 #include "filesystem/vfs.h"
 
 class VzPicoDiskDevice;

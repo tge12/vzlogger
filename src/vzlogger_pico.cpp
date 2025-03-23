@@ -12,13 +12,10 @@ using namespace std;
 
 #include "VzPicoWifi.h"
 #include "VzPicoSys.h"
-#include "VzPicoFsys.h"
-
-// #include "LocalGUI.h"
+#include "VzPicoLogger.h"
 
 // No major benefit from being user-configurable
 static const uint mainLoopSleep = 1000;    // in ms
-static bool fsInitialized = false;
 
 // --------------------------------------------------------------
 // Global vars referenced elsewhere
@@ -50,38 +47,6 @@ int main()
   sleep_ms(5000);
 
   options.verbosity(5); // INFO at startup, will be overwritten when parsing config
-
-#ifdef VZ_FSYS_SD
-  print(log_info, "Init FS ...", "");
-  VzPicoDiskDeviceSD sdCard;
-  VzPicoFsysLittle littleFS(sdCard);
-  littleFS.init();
-  littleFS.mount("/");
-  print(log_info, "Init FS done.", "");
-
-  FILE * fp = fopen("/vzlogger.log", "r");
-  if(fp == NULL)
-  {
-    printf("fopen error: %s\n", strerror(errno));
-  }
-  else
-  {
-// TODO - This should go into a dedicated program
-    printf("Found existing vzlogger.log ... dumping ...\n");
-    char buf[1024];
-    while(fgets(buf, sizeof(buf) - 1, fp))
-    {
-      printf(">>> %s", buf);
-    }
-
-    int err = fclose(fp);
-    if (err == -1)
-    {
-      printf("close error: %s\n", strerror(errno));
-    }
-  }
-  fsInitialized = true;
-#endif // VZ_FSYS_SD
 
   print(log_info, "--------------------------------------------------------------", "");
   print(log_info, "%s starting up ...", "", VzPicoSys::getVersion());
@@ -120,13 +85,6 @@ int main()
     print(log_alert, "No meters found - quitting!", NULL);
     return EXIT_FAILURE;
   }
-
-// --------------------------------------------------------------
-// print(log_debug, "Initializing local GUI ...", "");
-// --------------------------------------------------------------
-
-//  LocalGUI * gui = LocalGUI::getInstance();
-//  gui->init();
 
   // --------------------------------------------------------------
   print(log_debug, "===> Start meters", "");
@@ -227,9 +185,7 @@ int main()
     if((nextDue > 0) && ((cycle % 10) == 0))
     {
       print(log_info, "Cycle %d: All meters and pending I/O processed. Next due: %ds. Napping ...", "", cycle, nextDue);
-
-      // TODO: Make these metrics available as a meter (?)
-      print(log_debug, "Cycle %d, MEM: Used: %ld, Free: %ld", "", cycle, vzPicoSys->getMemUsed(), vzPicoSys->getMemFree());
+      print(log_info, "Cycle %d, MEM: Used: %ld, Free: %ld", "", cycle, vzPicoSys->getMemUsed(), vzPicoSys->getMemFree());
     }
 
     // --------------------------------------------------------------
@@ -278,8 +234,6 @@ int main()
       {
         it->printStatistics(log_info);
       }
-
-//      gui->showData();
     }
 
     // Sleep a while ...
@@ -289,61 +243,6 @@ int main()
   } // while
 
   return EXIT_SUCCESS;
-}
-
-/** --------------------------------------------------------------
- * Print error/debug/info messages to stdout and/or logfile
- *
- * @param id could be NULL for general messages
- * @todo integrate into syslog
- * -------------------------------------------------------------- */
-
-void print(log_level_t level, const char *format, const char *id, ...)
-{
-  if (level > options.verbosity())
-  {
-    return; /* skip message if its under the verbosity level */
-  }
-
-  char prefix[24];
-  if(sysRefTime > 0)
-  {
-    strcpy(prefix, VzPicoSys::getInstance()->getTimeString());
-    if (id)
-    {
-      snprintf(prefix + strlen(prefix), 7, "[%s]", (char *)id);
-    }
-  }
-  else
-  {
-    strcpy(prefix, "** ");
-  }
-
-  va_list args;
-  va_start(args, id);
-
-  printf((sysRefTime > 0 ? "%-24s" : "%s"), prefix);
-  vprintf(format, args);
-  printf("\n");
-
-  if(fsInitialized)
-  {
-    FILE * fp = fopen("/vzlogger.log", "a+");
-    if(fp == NULL)
-    {
-      printf("fopen error: %s\n", strerror(errno));
-    }
-    fprintf(fp, (sysRefTime > 0 ? "%-24s" : "%s"), prefix);
-    vfprintf(fp, format, args);
-    fprintf(fp, "\n");
-    int err = fclose(fp);
-    if (err == -1)
-    {
-      printf("close error: %s\n", strerror(errno));
-    }
-  }
-
-  va_end(args);
 }
 
 // --------------------------------------------------------------

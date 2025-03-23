@@ -35,6 +35,7 @@
 #include "lwip/dns.h"
 
 #include <VZException.hpp>
+#include <VzPicoLogger.h>
 #include <api/LwipIF.hpp>
 
 #include <Config_Options.hpp>
@@ -98,7 +99,7 @@ void vz::api::LwipIF::deletePCB()
 {
   if(pcb != NULL)
   {
-    print(log_debug, "Destroying PCB ...", id.c_str());
+    VzPicoLogger::getInstance()->print(true, log_debug, "Destroying PCB ...", id.c_str());
     altcp_arg(pcb, NULL);
     altcp_poll(pcb, NULL, 0);
     altcp_recv(pcb, NULL);
@@ -107,7 +108,7 @@ void vz::api::LwipIF::deletePCB()
     err_t err = altcp_close(pcb);
     if (err != ERR_OK)
     {
-      print(log_error, "Close failed %d, calling abort\n", id.c_str(), err);
+      VzPicoLogger::getInstance()->print(true, log_error, "Close failed %d, calling abort\n", id.c_str(), err);
       altcp_abort(pcb);
     }
     pcb = NULL;
@@ -166,8 +167,8 @@ void vz::api::LwipIF::connect()
   if (err != ERR_OK && err != ERR_INPROGRESS)
   {
     cyw43_arch_lwip_end();
-    // throw vz::VZException("LwipIF: error initiating DNS resolving, err=%d", err);
     print(log_error, "Error initiating DNS resolving: %d", id.c_str(), err);
+    // Error - just try again ...
     state = VZ_SRV_INIT;
     return;
   }
@@ -228,7 +229,7 @@ uint vz::api::LwipIF::postRequest(const char * data, const char * url)
 
   if (err != ERR_OK)
   {
-    // throw vz::VZException("LwipIF: error sending data, err=%d", err);
+    // Error - just try again ...
     print(log_error, "Error sending request: %d", id.c_str(), err);
     state = VZ_SRV_INIT;
   }
@@ -247,25 +248,25 @@ static void altcp_client_dns_found(const char* hostname, const ip_addr_t *ipaddr
   vz::api::LwipIF * ai = (vz::api::LwipIF *) arg;
   if (ipaddr)
   {
-    print(log_debug, "DNS resolution complete: %s -> %s", ai->getId(), hostname, ipaddr_ntoa(ipaddr));
-    print(log_debug, "Connecting to %s:%d", ai->getId(), hostname, ai->getPort());
+    VzPicoLogger::getInstance()->print(true, log_debug, "DNS resolution complete: %s -> %s", ai->getId(), hostname, ipaddr_ntoa(ipaddr));
+    VzPicoLogger::getInstance()->print(true, log_debug, "Connecting to %s:%d", ai->getId(), hostname, ai->getPort());
     err_t err = altcp_connect(ai->getPCB(), ipaddr, ai->getPort(), altcp_client_connected);
     if (err != ERR_OK)
     {
-      // throw vz::VZException("LwipIF: error initiating connect, err=%d", err);
-      print(log_error, "Error initiating connect: %d", ai->getId(), err);
+      // Error - just try again ...
+      VzPicoLogger::getInstance()->print(true, log_error, "Error initiating connect: %d", ai->getId(), err);
       ai->setState(VZ_SRV_INIT);
       return;
     }
   }
   else
   {
-    // throw vz::VZException("LwipIF: error resolving hostname %s", hostname);
-    print(log_error, "Error resolving hostname %s", ai->getId(), hostname);
+    // Error - just try again ...
+    VzPicoLogger::getInstance()->print(true, log_error, "Error resolving hostname %s", ai->getId(), hostname);
     ai->setState(VZ_SRV_INIT);
     return;
   }
-  print(log_debug, "Connection initiated", ai->getId());
+  VzPicoLogger::getInstance()->print(true, log_debug, "Connection initiated", ai->getId());
 }
 
 // ==============================
@@ -275,12 +276,12 @@ static err_t altcp_client_connected(void *arg, struct altcp_pcb *pcb, err_t err)
   vz::api::LwipIF * ai = (vz::api::LwipIF *) arg;
   if (err != ERR_OK)
   {
-    // throw vz::VZException("LwipIF: connect failed %d", err);
-    print(log_error, "Connect failed: %d", ai->getId(), err);
+    // Error - just try again ...
+    VzPicoLogger::getInstance()->print(true, log_error, "Connect failed: %d", ai->getId(), err);
     ai->setState(VZ_SRV_INIT);
     return err;
   }
-  print(log_info, "Server connected", ai->getId());
+  VzPicoLogger::getInstance()->print(true, log_info, "Server connected", ai->getId());
   ai->setState(VZ_SRV_READY);
   return ERR_OK;
 }
@@ -292,7 +293,7 @@ static err_t altcp_client_poll(void *arg, struct altcp_pcb *pcb)
   vz::api::LwipIF * ai = (vz::api::LwipIF *) arg;
   if(ai->getState() == VZ_SRV_CONNECTING || ai->getState() == VZ_SRV_SENDING)
   {
-    print(log_debug, "Timed out", ai->getId());
+    VzPicoLogger::getInstance()->print(true, log_debug, "Timed out", ai->getId());
     // Maybe just keep trying ... ?? Reconnect?
     ai->setState(VZ_SRV_INIT);
   }
@@ -304,7 +305,7 @@ static err_t altcp_client_poll(void *arg, struct altcp_pcb *pcb)
 static err_t altcp_client_sent(void *arg, struct altcp_pcb *pcb, u16_t len)
 {
   vz::api::LwipIF * ai = (vz::api::LwipIF *) arg;
-  print(log_debug, "Sent %d bytes", ai->getId(), len);
+  VzPicoLogger::getInstance()->print(true, log_debug, "Sent %d bytes", ai->getId(), len);
   return ERR_OK;
 }
 
@@ -313,13 +314,10 @@ static err_t altcp_client_sent(void *arg, struct altcp_pcb *pcb, u16_t len)
 static void altcp_client_err(void *arg, err_t err)
 {
   vz::api::LwipIF * ai = (vz::api::LwipIF *) arg;
-  print(log_debug, "Error: %d", ai->getId(), err);
 
-  // Maybe just keep trying ... ?? Reconnect?
+  // Keep trying ... reconnect
   ai->setState(VZ_SRV_INIT);
-  // ai->setState(VZ_SRV_ERROR);
-  // throw vz::VZException("LwipIF: altcp_client_err %d", err);
-  print(log_error, "LwipIF: altcp_client_err: %d", ai->getId(), err);
+  VzPicoLogger::getInstance()->print(true, log_error, "LwipIF: altcp_client_err: %d", ai->getId(), err);
 
   // Doc says: "The corresponding pcb is already freed when this callback is called!"
   // So we must not do this again, as it normally happens when reconnecting
@@ -333,13 +331,13 @@ static err_t altcp_client_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *p,
   vz::api::LwipIF * ai = (vz::api::LwipIF *) arg;
   if (!p)
   {
-    print(log_debug, "Connection closed by server: %d", ai->getId(), err);
+    VzPicoLogger::getInstance()->print(true, log_debug, "Connection closed by server: %d", ai->getId(), err);
     ai->setState(VZ_SRV_INIT);
     ai->deletePCB();
     return ERR_OK;
   }
 
-  print(log_debug, "Receiving data (%d): %d", ai->getId(), p->tot_len, err);
+  VzPicoLogger::getInstance()->print(true, log_debug, "Receiving data (%d): %d", ai->getId(), p->tot_len, err);
 
   if (p->tot_len > 0)
   {
@@ -353,7 +351,7 @@ static err_t altcp_client_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *p,
     buf[p->tot_len] = 0;
 
     ai->setResponse(buf);
-    print(log_debug, "New data received from server (%d bytes):\n***\n%s\n***", ai->getId(), p->tot_len, buf);
+    VzPicoLogger::getInstance()->print(true, log_debug, "New data received from server (%d bytes):\n***\n%s\n***", ai->getId(), p->tot_len, buf);
     altcp_recved(pcb, p->tot_len);
   }
 

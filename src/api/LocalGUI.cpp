@@ -37,6 +37,9 @@ extern "C" {
 
 extern Config_Options options;
 
+// TODO - how to configure this? Not in channel, cannot be controlled individually ...
+static const uint minUpdateInterval = 60; // in secs
+
 vz::api::LocalGUI::LocalGUI(Channel::Ptr ch, std::list<Option> pOptions) : ApiIF(ch)
 {
   OptionList optlist;
@@ -102,7 +105,7 @@ vz::api::LocalGUIDisplay * vz::api::LocalGUIDisplay::getInstance()
   return theInstance;
 }
 
-vz::api::LocalGUIDisplay::LocalGUIDisplay() : initialized(false), refreshCount(0)
+vz::api::LocalGUIDisplay::LocalGUIDisplay() : initialized(false), refreshCount(0), lastUpdate(0), prevNumLines(0)
 {
   UWORD Imagesize = ((EPD_2IN9B_V4_WIDTH % 8 == 0)? (EPD_2IN9B_V4_WIDTH / 8 ): (EPD_2IN9B_V4_WIDTH / 8 + 1)) * EPD_2IN9B_V4_HEIGHT;
   print(log_info, "Creating localGUI - imageSize: %d", "", Imagesize);
@@ -130,6 +133,14 @@ vz::api::LocalGUIDisplay::~LocalGUIDisplay()
 void vz::api::LocalGUIDisplay::putLine(const char * format, double val)
 {
   lines[format] = val;
+
+  // At the beginning, make sure that new lines from multiple channels are added immediately,
+  // not after minUpdateInterval each
+  if(lines.size() != prevNumLines)
+  {
+    prevNumLines = lines.size();
+    lastUpdate = 0;
+  }
 }
 
 void vz::api::LocalGUIDisplay::init()
@@ -166,10 +177,14 @@ void vz::api::LocalGUIDisplay::init()
 
 void vz::api::LocalGUIDisplay::showLines()
 {
+  time_t now = time(NULL);
+  if((now - lastUpdate) < minUpdateInterval) { return; }
+  lastUpdate = now;
+
   print(log_info, "Updating GUI data (refresh cnt: %d) ...", "", refreshCount);
 
   VzPicoSys * vps = VzPicoSys::getInstance();
-  const char * now = vps->getTimeString();
+  const char * nowStr = vps->getTimeString();
 
   if((refreshCount % 50) == 0)
   {
@@ -184,7 +199,7 @@ void vz::api::LocalGUIDisplay::showLines()
     Paint_Clear(WHITE);
   }
 
-  Paint_DrawString_EN(5, 0, now, &Font12, WHITE, BLACK);
+  Paint_DrawString_EN(5, 0, nowStr, &Font12, WHITE, BLACK);
   Paint_DrawLine(5, 15, 290, 15, BLACK, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
 
   print(log_debug, "Generating %d GUI data lines ...", "", lines.size());
