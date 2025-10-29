@@ -2,7 +2,7 @@
 class Ntp
 {
   public:
-    Ntp();
+    Ntp(const char * srv = NULL);  // If NULL, use DNS server
     ~Ntp();
 
     time_t queryTime();
@@ -12,8 +12,9 @@ class Ntp
     const ip_addr_t * getServerAddress();
 
   private:
+    std::string      server;
     ip_addr_t        ntp_server_address;
-    bool             dns_request_sent;
+    bool             request_sent;
     struct udp_pcb * ntp_pcb;
     absolute_time_t  ntp_test_time;
     alarm_id_t       ntp_resend_alarm;

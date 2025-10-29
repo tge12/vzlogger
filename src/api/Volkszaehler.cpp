@@ -242,7 +242,7 @@ void vz::api::Volkszaehler::send()
       return;
     }
 
-    const char * resp = _api->getResponse();
+    const char * resp = _api->getData();
     if(resp == NULL || strlen(resp) == 0)
     {
       print(log_error, "NULL response", channel()->name());

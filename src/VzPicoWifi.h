@@ -30,6 +30,7 @@
 #include <string>
 #include <common.h>
 
+class Ntp;
 class VzPicoWifi
 {
   public:
@@ -43,11 +44,12 @@ class VzPicoWifi
     bool   isConnected();
     void   printStatistics(log_level_t logLevel);
     void   ledOn(uint msecs = 0);
+    time_t syncTime();
 
   private:
     uint    retries;
     uint    connTimeout;
-    time_t  sysRefTime;
+    time_t  sysRefTS;
     bool    firstTime;
     std::string hostname;
 
@@ -57,6 +59,9 @@ class VzPicoWifi
     uint    accTimeDown;
     time_t  lastChange;
     bool    initialized;
+    time_t  lastUtc;
+    time_t  lastTimeSync;
+    Ntp   * ntp;
 };
 
 #endif // VZ_PICO_WIFI

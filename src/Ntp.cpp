@@ -8,8 +8,8 @@
 #include "lwip/dns.h"
 #include "lwip/pbuf.h"
 #include "lwip/udp.h"
+#include <lwip/inet.h>
 
-#define NTP_SERVER "pool.ntp.org"
 #define NTP_MSG_LEN 48
 #define NTP_PORT 123
 #define NTP_DELTA 2208988800 // seconds between 1 Jan 1900 and 1 Jan 1970
@@ -23,20 +23,34 @@ static void ntp_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_ad
 static int64_t ntp_failed_handler(alarm_id_t id, void *user_data);
 static void ntp_dns_found(const char *hostname, const ip_addr_t *ipaddr, void *arg);
 
-Ntp::Ntp() : dns_request_sent(false), theTime(0)
+Ntp::Ntp(const char * srv) : request_sent(false), theTime(0)
 {
   ntp_pcb = udp_new_ip_type(IPADDR_TYPE_ANY);
   if (!ntp_pcb)
   {
-    // TODO exception
-    print(log_error, "NTP - Failed to create pcb", "");
+    throw vz::VZException("NTP - Failed to create pcb");
   }
   udp_recv(ntp_pcb, ntp_recv, this);
+
+  if(srv != NULL)
+  {
+    server = srv;
+  }
+  else
+  {
+    // If the ntpServer is NULL, try the DNS server - e.g. FritzBoxes can be configured to do that.
+    // Then, we don't have to leave the local WiFi network ...
+    char str[INET_ADDRSTRLEN];
+    server = ip4addr_ntoa_r(dns_getserver(0), str, sizeof(str));
+  }
 }
 
 Ntp::~Ntp()
 {
-  // TODO cleanup
+  if(ntp_pcb)
+  {
+    udp_remove(ntp_pcb);
+  }
 }
 
 void Ntp::setServerAddress(const ip_addr_t * ipaddr) { ntp_server_address = *ipaddr; }
@@ -44,35 +58,40 @@ const ip_addr_t * Ntp::getServerAddress() { return &ntp_server_address; }
 
 time_t Ntp::queryTime()
 {
-  // TODO TGE ??? if (absolute_time_diff_us(get_absolute_time(), ntp_test_time) < 0 && ! dns_request_sent)
-  if (! dns_request_sent)
+  // Init + return in case of errors
+  theTime = 0;
+
+  // TODO TGE ??? if (absolute_time_diff_us(get_absolute_time(), ntp_test_time) < 0 && ! request_sent)
+  if (! request_sent)
   {
     print(log_debug, "Setting timer ...", "");
     // Set alarm in case udp requests are lost
     ntp_resend_alarm = add_alarm_in_ms(NTP_RESEND_TIME, ntp_failed_handler, this, true);
 
-    print(log_debug, "Resolving NTP server %s ...", "", NTP_SERVER);
+    print(log_debug, "Resolving NTP server %s ...", "", server.c_str());
     cyw43_arch_lwip_begin();
-    int err = dns_gethostbyname(NTP_SERVER, &ntp_server_address, ntp_dns_found, this);
+    int err = dns_gethostbyname(server.c_str(), &ntp_server_address, ntp_dns_found, this);
     cyw43_arch_lwip_end();
 
-    print(log_debug, "DNS resolution of NTP server triggered ...", "");
-    dns_request_sent = true;
     if (err == ERR_OK)
     {
-      this->request(); // Cached result
+      this->request(); // Cached DNS result, send NTP request right away
     }
     else if (err != ERR_INPROGRESS)
     {
-      // ERR_INPROGRESS means expect a callback
-      // TODO exception
-      print(log_error, "DNS request failed", "");
+      // ERR_INPROGRESS means expect a callback - so if we are here, something else is wrong
+      // If failed, just try again some time later ...
+      print(log_error, "DNS request failed: %d", "", err);
       this->result(-1, NULL);
+      return 0;
     }
+
+    print(log_debug, "DNS resolution of NTP server triggered ...", "");
+    request_sent = true;
   }
 
   // Wait for completion
-  while(dns_request_sent)
+  while(request_sent)
   {
     print(log_debug, "Waiting for NTP time ...", "");
     sleep_ms(1000);
@@ -81,9 +100,9 @@ time_t Ntp::queryTime()
 }
 
 // Called with results of operation
-void Ntp::result(int status, time_t *result)
+void Ntp::result(int status, time_t * result)
 {
-  print(log_debug, "NTP result arrived", "");
+  print(log_debug, "NTP result arrived: %ld", "", (result == NULL ? 0 : *result));
   if (status == 0 && result)
   {
     struct tm *utc = gmtime(result);
@@ -99,7 +118,7 @@ void Ntp::result(int status, time_t *result)
     ntp_resend_alarm = 0;
   }
   ntp_test_time = make_timeout_time_ms(NTP_TEST_TIME);
-  dns_request_sent = false;
+  request_sent = false;
 }
 
 
@@ -120,7 +139,7 @@ void Ntp::request()
 static int64_t ntp_failed_handler(alarm_id_t id, void *user_data)
 {
   Ntp * ntp = (Ntp *) user_data;
-  // TODO exception
+  // If failed, just try again some time later ...
   print(log_error, "NTP request failed", "");
   ntp->result(-1, NULL);
   return 0;
@@ -140,8 +159,8 @@ static void ntp_dns_found(const char *hostname, const ip_addr_t *ipaddr, void *a
   }
   else
   {
-    // TODO exception
-    print(log_error, "NTP DNS request failed", "");
+    // If failed, just try again some time later ...
+    print(log_error, "DNS resolution of NTP server '%s' failed", "", hostname);
     ntp->result(-1, NULL);
   }
 }
@@ -168,9 +187,10 @@ static void ntp_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_ad
   }
   else
   {
-    // TODO exception
+    // If failed, just try again some time later ...
     print(log_error, "Invalid NTP response", "");
     ntp->result(-1, NULL);
   }
+  pbuf_free(p);
 }
 

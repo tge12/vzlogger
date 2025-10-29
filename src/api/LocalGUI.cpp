@@ -30,15 +30,24 @@
 #include <VzPicoSys.h>
 
 // This assumes a ePaper display - nothing else supported yet
+// https://www.waveshare.com/wiki/Pico-ePaper-2.9-B
 extern "C" {
-#include "EPD_2in9b_V4.h"
-#include "GUI_Paint.h"
+# include "EPD_2in9b_V4.h"
+# include "GUI_Paint.h"
 }
 
 extern Config_Options options;
 
 // TODO - how to configure this? Not in channel, cannot be controlled individually ...
-static const uint minUpdateInterval = 60; // in secs
+static const uint minUpdateInterval = 120; // in secs
+static const uint fullUpdateEvery = 50; // 49x partial, 1x full
+static const uint sleepAfterRefreshCount = 5;
+static const uint sleepMinUpdateInteval = 120;
+// TEST do not sleep: static const uint sleepAfterRefreshCount = 0;
+
+// ---------------------------------------------------------------------
+// LocalGUI acting as channel
+// ---------------------------------------------------------------------
 
 vz::api::LocalGUI::LocalGUI(Channel::Ptr ch, std::list<Option> pOptions) : ApiIF(ch)
 {
@@ -94,6 +103,10 @@ void vz::api::LocalGUI::send()
 
 void vz::api::LocalGUI::register_device() {}
 
+// ---------------------------------------------------------------------
+// LocalGUIDisplay as actual display implementation
+// ---------------------------------------------------------------------
+
 vz::api::LocalGUIDisplay * vz::api::LocalGUIDisplay::getInstance()
 {
   static LocalGUIDisplay * theInstance = NULL;
@@ -105,7 +118,7 @@ vz::api::LocalGUIDisplay * vz::api::LocalGUIDisplay::getInstance()
   return theInstance;
 }
 
-vz::api::LocalGUIDisplay::LocalGUIDisplay() : initialized(false), refreshCount(0), lastUpdate(0), prevNumLines(0)
+vz::api::LocalGUIDisplay::LocalGUIDisplay() : initialized(false), refreshCount(0), lastUpdate(0), prevNumLines(0), sleeping(false)
 {
   UWORD Imagesize = ((EPD_2IN9B_V4_WIDTH % 8 == 0)? (EPD_2IN9B_V4_WIDTH / 8 ): (EPD_2IN9B_V4_WIDTH / 8 + 1)) * EPD_2IN9B_V4_HEIGHT;
   print(log_info, "Creating localGUI - imageSize: %d", "", Imagesize);
@@ -120,6 +133,10 @@ vz::api::LocalGUIDisplay::LocalGUIDisplay() : initialized(false), refreshCount(0
   if((contentCanvas = (UBYTE *)malloc(Imagesize)) == NULL)
   {
     throw vz::VZException("Failed to allocate for content canvas.");
+  }
+  if(DEV_Module_Init() != 0)
+  {
+    throw vz::VZException("Failed to init GUI device.");
   }
 }
 
@@ -151,10 +168,6 @@ void vz::api::LocalGUIDisplay::init()
   }
 
   print(log_info, "Init local GUI device ...", "");
-  if(DEV_Module_Init() != 0)
-  {
-    throw vz::VZException("Failed to init GUI device.");
-  }
   EPD_2IN9B_V4_Init();
   print(log_debug, "Init GUI device complete. Clearing ...", "");
   EPD_2IN9B_V4_Clear();
@@ -178,15 +191,29 @@ void vz::api::LocalGUIDisplay::init()
 void vz::api::LocalGUIDisplay::showLines()
 {
   time_t now = time(NULL);
-  if((now - lastUpdate) < minUpdateInterval) { return; }
+  if((lastUpdate > 0) && ((now - lastUpdate) < minUpdateInterval))
+  {
+    print(log_debug, "Not updating GUI data (refresh cnt: %d, deltaT: %d) ...", "", refreshCount, (now - lastUpdate));
+    return;
+  }
   lastUpdate = now;
+  bool fullUpdateNeeded = ((refreshCount % fullUpdateEvery) == 0);
+
+  if(sleeping)
+  {
+    print(log_debug, "GUI in sleep mode. Waking up ...", "");
+    initialized = false;
+    this->init();
+    sleeping = false;
+    fullUpdateNeeded = true;
+  }
 
   print(log_info, "Updating GUI data (refresh cnt: %d) ...", "", refreshCount);
 
   VzPicoSys * vps = VzPicoSys::getInstance();
   const char * nowStr = vps->getTimeString();
 
-  if((refreshCount % 50) == 0)
+  if(fullUpdateNeeded)
   {
     Paint_NewImage(RYImage, EPD_2IN9B_V4_WIDTH, EPD_2IN9B_V4_HEIGHT, 270, WHITE);
     Paint_Clear(WHITE);
@@ -217,7 +244,7 @@ void vz::api::LocalGUIDisplay::showLines()
   Paint_DrawLine(5, 118, 290, 118, BLACK, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
   Paint_DrawString_EN(5, 120, VzPicoSys::getVersion(), &Font8, WHITE, BLACK);
 
-  if((refreshCount++ % 50) == 0)
+  if(fullUpdateNeeded)
   {
     print(log_debug, "Full GUI refresh ...", "");
     EPD_2IN9B_V4_Display_Base(BlackImage, RYImage);
@@ -228,4 +255,16 @@ void vz::api::LocalGUIDisplay::showLines()
     EPD_2IN9B_V4_Display_Partial(contentCanvas, 0, 0, EPD_2IN9B_V4_WIDTH, EPD_2IN9B_V4_HEIGHT);
   }
   print(log_debug, "GUI refresh done.", "");
+  refreshCount++;
+
+  if(sleepAfterRefreshCount > 0 && refreshCount > sleepAfterRefreshCount && minUpdateInterval >= sleepMinUpdateInteval)
+  {
+    print(log_debug, "GUI going to sleep ...", "");
+    sleeping = true;
+    EPD_2IN9B_V4_Sleep();
+// Does not change anything, still 12mA
+//     DEV_Delay_ms(2000); //important, at least 2s
+//     DEV_Module_Exit();
+    print(log_debug, "GUI sleep mode reached.", "");
+  }
 }

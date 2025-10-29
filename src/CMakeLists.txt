@@ -5,9 +5,12 @@
 #AM_LDFLAGS =
 
 option(VZ_BUILD_ON_PICO "Build on pico" ON)
+# add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_emonlib.h")
 add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_brunnen.h")
+# add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_brunnen_mini.h")
 # add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_w1th_schlazi.h")
 
+option(LOCAL_SUPPORT "Micro-httpd" ON)
 option(VZ_USE_THREADS "Use threads" ON)
 option(VZ_USE_INFLUXDB "Use influxdb" ON)
 option(VZ_USE_MYSMARTGRID "Use mysmartgrid" ON)
@@ -97,13 +100,14 @@ add_compile_options(-DPICO_RP2040)
   set(VZ_USE_ALTCP ON)
   set(VZ_USE_HTTPS OFF)
 
-  # add_compile_options(-DPICO_DEBUG_MALLOC=1 -DPICO_PANIC_FUNCTION=vzlogger_panic)
+  # add_compile_options(-DPICO_DEBUG_MALLOC=1)
+  add_compile_options(-DNDEBUG)
   add_compile_options(-DPICO_PANIC_FUNCTION=vzlogger_panic)
   # TGE:
   add_compile_options(-Wno-unused-variable -Wno-unused-parameter -Wno-reorder)
 
-  set(VZ_USE_FSYS_SD ON)
-  set(VZ_USE_FSYS_LITTLE ON)
+  set(VZ_USE_FSYS_SD OFF)
+  set(VZ_USE_FSYS_LITTLE OFF)
   set(VZ_USE_LOCAL_GUI ON)
 
 else(VZ_BUILD_ON_PICO)
@@ -116,8 +120,12 @@ add_subdirectory(protocols)
 ## local interface support
 #####################################################################
 if(LOCAL_SUPPORT)
+ if(VZ_BUILD_ON_PICO)
+  set(local_srcs VzPicoHttpd.cpp)
+ else(VZ_BUILD_ON_PICO)
   set(local_srcs local.cpp)
   include_directories(${MICROHTTPD_INCLUDE_DIR})
+ endif(VZ_BUILD_ON_PICO)
 else(LOCAL_SUPPORT)
   set(local_srcs "")
 endif(LOCAL_SUPPORT)
@@ -198,7 +206,7 @@ if(VZ_BUILD_ON_PICO)
           pico_stdlib
           hardware_adc
           hardware_pio
-          proto vz vz-api
+          proto vz vz-api vz
           json-c
           emonlib
           distance-sensor

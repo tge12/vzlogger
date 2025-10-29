@@ -42,21 +42,15 @@ VzPicoSys * VzPicoSys::getInstance()
   return theInstance;
 }
 
-VzPicoSys::VzPicoSys()
+VzPicoSys::VzPicoSys() : accTimeLowCpu(0), accTimeDefaultCpu(0), curYear(0), dstOn(0), dstOff(0), lastVoltageVal(0),
+  lastVoltageTime(0), isOnBattery(false)
 {
-  accTimeLowCpu = 0;
-  accTimeDefaultCpu = 0;
-
   // See SDK Examples clocks/detached_clk_peri/detached_clk_peri.c:
   set_sys_clock_khz(PLL_SYS_KHZ, true);
   clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS, PLL_SYS_KHZ * 1000, PLL_SYS_KHZ * 1000);
   defaultClockSpeed = (clock_get_hz(clk_sys) / 1000000);
 
   lastChange = time(NULL);
-
-  lastVoltageVal = 0;
-  lastVoltageTime = 0;
-  isOnBattery = false;
 
   adc_init();
   currentTime[0] = 0;
@@ -177,14 +171,13 @@ void VzPicoSys::printStatistics(log_level_t logLevel)
 
 bool VzPicoSys::setCpuSpeedDefault()
 {
-  print(log_info, "Setting normal CPU speed: %dMHz.", "", defaultClockSpeed);
-
   time_t now = time(NULL);
   accTimeLowCpu += (now - lastChange);
   lastChange = now;
 
   clock_configure(clk_sys, CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLKSRC_CLK_SYS_AUX, CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
                   PLL_SYS_KHZ, PLL_SYS_KHZ);
+  print(log_info, "Set normal CPU speed: %dMHz.", "", defaultClockSpeed);
   return true;
 }
 void VzPicoSys::setCpuSpeedLow(int factor)
@@ -214,13 +207,14 @@ void VzPicoSys::setCpuSpeedLow(int factor)
     printf("clk_adc  = %dkHz\n", f_clk_adc);
     printf("clk_rtc  = %dkHz\n", f_clk_rtc);
 
-    printf("SPI: %d\n", spi_get_baudrate(spi0));
+    printf("SPI: %d %d\n", spi_get_baudrate(spi0), spi_get_baudrate(spi1));
   }
 */
 
+  print(log_info, "Setting low-power CPU speed ...", "");
   clock_configure(clk_sys, CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLKSRC_CLK_SYS_AUX, CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
                   PLL_SYS_KHZ, PLL_SYS_KHZ / factor);
-  print(log_info, "Set low-power CPU speed %dMhz ...", "", getCurrentClockSpeed());
+  print(log_debug, "Set low-power CPU speed %dMhz ...", "", getCurrentClockSpeed());
 
 /*
   printf("LOW SPEED\n");
@@ -243,7 +237,7 @@ void VzPicoSys::setCpuSpeedLow(int factor)
     printf("clk_adc  = %dkHz\n", f_clk_adc);
     printf("clk_rtc  = %dkHz\n", f_clk_rtc);
 
-    printf("SPI: %d\n", spi_get_baudrate(spi0));
+    printf("SPI: %d %d\n", spi_get_baudrate(spi0), spi_get_baudrate(spi1));
   }
 */
 }
@@ -254,9 +248,12 @@ const char * VzPicoSys::getVersion() { return PACKAGE "/" VERSION " (LwIP " LWIP
 const char * VzPicoSys::getTimeString()
 {
   struct timeval now;
-  gettimeofday(&now, NULL);
+  gettimeofday(&now, NULL); // Initially seconds since boot
   extern time_t sysRefTime;
-  now.tv_sec += sysRefTime + tzOffset;
+  now.tv_sec += sysRefTime + tzOffset; // Add offset queried from NTP to make it real UTC. Add TZ offset to make it MET
+
+  if(isDST(now.tv_sec)) { now.tv_sec += 3600; }; // Add 1h to make it MEST if needed
+
   struct tm tm;
   struct tm * timeinfo = localtime_r(&now.tv_sec, &tm);
 
@@ -264,4 +261,42 @@ const char * VzPicoSys::getTimeString()
   strftime(currentTime, 18, "[%b %d %H:%M:%S]", timeinfo);
 
   return currentTime;
+}
+
+bool VzPicoSys::isDST(const time_t now)
+{
+  extern time_t sysRefTime;
+  if(curYear == 0 || sysRefTime >= endOfYear)
+  {
+    struct tm tm;
+    localtime_r(&now, &tm);
+    curYear = tm.tm_year;
+ 
+    tm.tm_mon  = 2;        // March
+    tm.tm_mday = (31 - 7); // Safely within last week of month
+    tm.tm_hour = 2 - (tzOffset / 3600); // DST begins at 02:00 MET (not UTC), so sub tzOffset
+    tm.tm_min  = 0;
+    tm.tm_sec  = 0;
+    dstOn = mktime(&tm);
+    localtime_r(&dstOn, &tm);
+    tm.tm_mday += (7 - tm.tm_wday); // Make it Sunday and calculate again
+    dstOn = mktime(&tm);
+
+    tm.tm_mon  = 9; // Oct
+    tm.tm_mday = (31 - 7); // Safely within last week of month
+    dstOff = mktime(&tm);
+    localtime_r(&dstOff, &tm);
+    tm.tm_mday += (7 - tm.tm_wday); // Make it Sunday and calculate again
+    dstOff = mktime(&tm);
+
+    tm.tm_mon  = 0;
+    tm.tm_mday = 1;
+    tm.tm_hour = 0;
+    tm.tm_year = curYear + 1;
+    endOfYear = mktime(&tm); // Actually this 1.1. of next year
+
+    print(log_info, "Calculated DST limits: %lld .. %lld (EndOfYear: %lld)", "", dstOn, dstOff, endOfYear);
+  }
+
+  return ((sysRefTime > dstOn) && (sysRefTime < dstOff));
 }

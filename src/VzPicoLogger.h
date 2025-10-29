@@ -22,6 +22,7 @@ class VzPicoLogger
     std::vector<std::string> queuedMsgs;
     int  rotateSize;
     uint rotateMaxInst;
+    bool noStdout;
 };
 
 #endif // VZ_PICO_LOGGER_H

@@ -32,7 +32,7 @@ static const char * statusTxt[] = { "Wifi down", "Connected", "Connection failed
                                     "No matching SSID found", "Authentication failure" };
 static const char * wifiLogId = "wifi";
 
-VzPicoWifi::VzPicoWifi(const char * hn, uint numRetries, uint timeout) : sysRefTime(0), firstTime(true), numUsed(0), accTimeConnecting(0), accTimeUp(0), accTimeDown(0), initialized(false)
+VzPicoWifi::VzPicoWifi(const char * hn, uint numRetries, uint timeout) : sysRefTS(0), firstTime(true), numUsed(0), accTimeConnecting(0), accTimeUp(0), accTimeDown(0), initialized(false), ntp(NULL)
 {
   retries = numRetries;
   connTimeout = timeout;
@@ -54,7 +54,12 @@ VzPicoWifi::~VzPicoWifi()
 
 bool VzPicoWifi::enable(uint enableRetries)
 {
-  int rc;
+  int rc = 0;
+
+  // --------------------------------------------------------------
+  print(log_info, "Enabling WiFi ...", wifiLogId);
+  // --------------------------------------------------------------
+
   if(initialized)
   {
     int linkStatus = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
@@ -62,21 +67,17 @@ bool VzPicoWifi::enable(uint enableRetries)
   }
   else
   { 
-    // --------------------------------------------------------------
-    print(log_info, "Enabling WiFi ...", wifiLogId);
-    // --------------------------------------------------------------
-
     rc = cyw43_arch_init();
     if(rc != 0)
     {
       print(log_error, "WiFi init failed. Error %d.", wifiLogId, rc);
       return false;
     }
+
     cyw43_arch_enable_sta_mode();
-
     this->ledOn();
-
     cyw43_arch_lwip_begin();
+
     struct netif * n = &cyw43_state.netif[CYW43_ITF_STA];
     if(hostname.empty())
     {
@@ -98,14 +99,16 @@ bool VzPicoWifi::enable(uint enableRetries)
   for(uint i = 0; i < (enableRetries > 0 ? enableRetries : retries); i++)
   {
     // --------------------------------------------------------------
-    print(log_debug, "Connecting WiFi %s (%d) as '%s' ...", wifiLogId, wifiSSID, i, hostname.c_str());
+    print(log_info, "Connecting WiFi %s (%d) as '%s' ...", wifiLogId, wifiSSID, i, hostname.c_str());
     // --------------------------------------------------------------
 
+    cyw43_arch_lwip_begin();
     if(! (rc = cyw43_arch_wifi_connect_timeout_ms(wifiSSID, wifiPW, CYW43_AUTH_WPA2_AES_PSK, connTimeout)))
     {
       int32_t rssi;
       uint8_t mac[6];
       
+// TODO Possibly add cyw43_arch_lwip_begin and end here?
       cyw43_wifi_get_mac(&cyw43_state, CYW43_ITF_STA, mac);
       cyw43_wifi_get_rssi(&cyw43_state, &rssi);
       cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
@@ -119,12 +122,17 @@ bool VzPicoWifi::enable(uint enableRetries)
       lastChange = now;
       numUsed++;
 
+      cyw43_arch_lwip_end();
+      this->ledOn(10); // Turn off
       return true;
     }
+    cyw43_arch_lwip_end();
+    this->ledOn(10); // Turn off
     sleep_ms(1000);
-    this->ledOn(10);
+    this->ledOn(); // Turn on again
   }
 
+  this->ledOn(10);
   print(log_error, "Failed to connect WiFi '%s'. Error: %d.", wifiLogId, wifiSSID, rc);
   this->disable();
   return false;
@@ -140,17 +148,20 @@ bool VzPicoWifi::init()
   if(this->enable())
   {
     // --------------------------------------------------------------
-    printf("** Getting NTP time ...\n");
+    if(! muteStdout) printf("** Getting NTP time ...\n");
     // --------------------------------------------------------------
 
-    Ntp ntp;
-    time_t utc = ntp.queryTime();
+    ntp = new Ntp();
+    time_t utc = ntp->queryTime();
     if(utc)
     {
-      printf("** Got NTP UTC time %s", ctime(&utc));
-      time(&sysRefTime); // Something like 1.1.1970 00:00:07, i.e. the sys is running 7secs
-      sysRefTime = utc - sysRefTime;
-      printf("** Sys boot time UTC %s", ctime(&sysRefTime));
+      if(! muteStdout) printf("** Got NTP UTC time %s", ctime(&utc));
+      time(&sysRefTS); // Something like 1.1.1970 00:00:07, i.e. the sys is running 7secs
+      sysRefTS = utc - sysRefTS;
+      if(! muteStdout) printf("** Sys boot time UTC %s", ctime(&sysRefTS));
+
+      lastUtc = utc;
+      lastTimeSync = time(NULL);
     }
     return true;
   }
@@ -163,10 +174,7 @@ bool VzPicoWifi::init()
 
 void VzPicoWifi::disable()
 {
-  if(! initialized)
-  {
-    return;
-  }
+  if(! initialized) { return; }
 
   time_t now = time(NULL);
   accTimeUp += (now - lastChange);
@@ -178,16 +186,17 @@ void VzPicoWifi::disable()
   initialized = false;
 }
 
-time_t VzPicoWifi::getSysRefTime() { return sysRefTime; }
+time_t VzPicoWifi::getSysRefTime() { return sysRefTS; }
 
 bool VzPicoWifi::isConnected()
 {
+  if(! initialized) { return false; }
+
+  cyw43_arch_lwip_begin();
   int linkStatus = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
-  print(log_debug, "WiFi link status: %s (%d).", wifiLogId, statusTxt[linkStatus], linkStatus);
-  if(linkStatus < 0)
-  {
-    print(log_error, "WiFi link status: %d.", wifiLogId, linkStatus);
-  }
+  cyw43_arch_lwip_end();
+
+  print(log_finest, "WiFi link status: %s (%d).", wifiLogId, statusTxt[linkStatus], linkStatus);
   return (linkStatus == CYW43_LINK_JOIN);
 }
 
@@ -203,6 +212,7 @@ void VzPicoWifi::printStatistics(log_level_t logLevel)
 
 void VzPicoWifi::ledOn(uint msecs)
 {
+  cyw43_arch_lwip_begin();
   cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
   if(msecs > 0)
   {
@@ -210,5 +220,40 @@ void VzPicoWifi::ledOn(uint msecs)
     sleep_ms(msecs);
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
   }
+  cyw43_arch_lwip_end();
+}
+
+time_t VzPicoWifi::syncTime()
+{
+  // Idea is: we know lastUtc and UTC as of now - which yields a deltaT
+  // Then, the same deltaT should exist between the lastTimeSync and "now" - if not, probably
+  // the system clock is wrong ... 
+
+  print(log_debug, "Syncing NTP time ...", wifiLogId);
+  time_t utc = ntp->queryTime();
+  if(! utc)
+  {
+    // Something went wrong, try again later
+    return sysRefTS;
+  }
+
+  time_t now = time(NULL);
+
+  unsigned long deltaUtc = (utc - lastUtc);
+  unsigned long deltaT = (now - lastTimeSync);
+
+  long timeDiff = (deltaUtc - deltaT);
+  print(log_debug, "Syncing NTP time. deltaUTC: %ld, deltaT: %ld -> %d", wifiLogId, deltaUtc, deltaT, timeDiff);
+
+  if(timeDiff != 0)
+  {
+    // If deltaT is bigger, the sys clock is too fast
+    print(log_info, "NTP time sync. Adjusting OS time by %ds ...", wifiLogId, timeDiff);
+    sysRefTS += timeDiff;
+  }
+
+  lastUtc = utc;
+  lastTimeSync = now;
+  return sysRefTS;
 }
 

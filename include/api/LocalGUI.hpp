@@ -69,6 +69,7 @@ class LocalGUIDisplay
     bool      initialized;
     time_t    lastUpdate;
     uint      prevNumLines;
+    bool      sleeping;
 };
 
 } // namespace api

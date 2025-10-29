@@ -61,7 +61,7 @@ Channel::Channel(const std::list<Option> &pOptions, const std::string apiProtoco
           _thread_running(false),
 #endif // VZ_USE_THREADS
           _options(pOptions), _buffer(new Buffer()), _identifier(pIdentifier),
-	  _last(0), _uuid(uuid), _apiProtocol(apiProtocol), _duplicates(0) {
+	  _uuid(uuid), _apiProtocol(apiProtocol), _duplicates(0) {
 	id = instances++;
 
 	// set channel name

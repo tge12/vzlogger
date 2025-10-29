@@ -4,6 +4,8 @@
 #include "VzPicoLogger.h"
 #include <Config_Options.hpp>
 
+#include "pico/cyw43_arch.h"
+
 extern time_t sysRefTime;
 extern Config_Options options;
 
@@ -21,7 +23,7 @@ VzPicoLogger * VzPicoLogger::getInstance()
   return theInstance;
 }
 
-VzPicoLogger::VzPicoLogger() : fsInitialized(false), rotateSize(100000), rotateMaxInst(10)
+VzPicoLogger::VzPicoLogger() : fsInitialized(false), rotateSize(1000000), rotateMaxInst(10), noStdout(muteStdout)
 {
 }
 
@@ -38,28 +40,30 @@ void VzPicoLogger::init()
   struct stat st;
   if(stat(logfilePath, &st) < 0)
   {
-    printf("stat error: %s\n", strerror(errno));
+    this->print(log_error, "stat error: %s", "", strerror(errno));
   }
   else
   {
-    printf("Log file %s size %ld\n", logfilePath, st.st_size);
+    this->print(log_debug, "Log file %s size %ld", "", logfilePath, st.st_size);
   }
 
   FILE * fp = fopen(logfilePath, "r");
   if(fp == NULL)
   {
-    printf("fopen error: %s\n", strerror(errno));
+    this->print(log_error, "fopen error: %s", "", strerror(errno));
   }
   else
   {
-/* TODO - This should go into a dedicated program */
-    printf("Found existing vzlogger.log ... dumping ...\n");
-    char buf[1024];
-    while(fgets(buf, sizeof(buf) - 1, fp))
+    // TODO - This could go into a extra/dedicated program
+    this->print(log_info, "Found existing vzlogger.log ... dumping ...", "");
+    if(! noStdout)
     {
-      printf(">>> %s", buf);
+      char buf[1024];
+      while(fgets(buf, sizeof(buf) - 1, fp))
+      {
+        printf(">>> %s", buf);
+      }
     }
-/* */
 
     // TODO Log rotation?
     ftruncate(fileno(fp), 0);
@@ -67,7 +71,7 @@ void VzPicoLogger::init()
     int err = fclose(fp);
     if (err == -1)
     {
-      printf("close error: %s\n", strerror(errno));
+      this->print(log_error, "close error: %s", "", strerror(errno));
     }
   }
   fsInitialized = true;
@@ -101,7 +105,8 @@ void VzPicoLogger::printv(bool inIRQ, log_level_t level, const char *format, con
   if (level < log_alert || level > log_finest) { level = log_info; }
   const char * levelStr = "AEWWIIDDDDDFFFFF"; // Match log_level_t
 
-  char prefix[27];
+  // Mar 24 22:03:43][mtr1] D 
+  char prefix[32];
   if(sysRefTime > 0)
   {
     strcpy(prefix, VzPicoSys::getInstance()->getTimeString());
@@ -115,15 +120,21 @@ void VzPicoLogger::printv(bool inIRQ, log_level_t level, const char *format, con
     strcpy(prefix, "** ");
   }
 
-  printf((sysRefTime > 0 ? "%-24s" : "%s"), prefix);
-  vprintf(format, args);
-  printf("\n");
+  if(! noStdout)
+  {
+    printf((sysRefTime > 0 ? "%-24s" : "%s"), prefix);
+    vprintf(format, args);
+    printf("\n");
+  }
 
-  if(fsInitialized)
+  // SD-card logging does not work with reduced CPU clock speed :-(
+  // At least I did not find a way yet ...
+  bool clockSpeedIsDefault = VzPicoSys::getInstance()->isClockSpeedDefault();
+  if(fsInitialized && clockSpeedIsDefault)
   {
     if(inIRQ)
     {
-      char buf[256];
+      char buf[512];
       sprintf(buf, (sysRefTime > 0 ? "%-24s" : "%s"), prefix);
       int bl = strlen(buf);
       vsnprintf(buf + bl, (sizeof(buf) - 1) - bl, format, args);
@@ -167,7 +178,7 @@ void VzPicoLogger::printv(bool inIRQ, log_level_t level, const char *format, con
     int err = fclose(fp);
     if (err == -1)
     {
-      printf("close error: %s\n", strerror(errno));
+      printf("close error: %s (%d)\n", strerror(errno), errno);
     }
   }
 }
@@ -180,7 +191,7 @@ void VzPicoLogger::printv(bool inIRQ, log_level_t level, const char *format, con
  * @todo integrate into syslog
  * -------------------------------------------------------------- */
 
-void print(log_level_t level, const char *format, const char *id, ...)
+void print(log_level_t level, const char * format, const char * id, ...)
 {
   // Skip message if its under the verbosity level
   if (level > options.verbosity()) { return; }
@@ -189,5 +200,17 @@ void print(log_level_t level, const char *format, const char *id, ...)
   va_start(args, id);
   VzPicoLogger::getInstance()->printv(false, level, format, id, args);
   va_end(args);
+}
+extern "C" void tge_print_lwip(const char * format, ...)
+{
+  va_list args;
+  va_start(args, format);
+  VzPicoLogger::getInstance()->printv(true, log_debug, format, "LWIP", args);
+  va_end(args);
+}
+extern "C" void tge_flush_lwip()
+{
+  print(log_debug, "Flush", "");
+  fflush(NULL);
 }
 

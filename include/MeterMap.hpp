@@ -113,7 +113,7 @@ class MeterMap {
 	pthread_t _thread;    // Thread data for meter (reading)
         bool first_reading;
 #else // VZ_USE_THREADS
-        time_t lastRead;
+        time_t nextDue;
 #endif // VZ_USE_THREADS
 
         // Statistics counters

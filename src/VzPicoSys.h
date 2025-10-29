@@ -36,6 +36,7 @@ class VzPicoSys
 
     void  printStatistics(log_level_t logLevel);
     const char * getTimeString();
+    bool  isDST(const time_t now);
 
   private:
     VzPicoSys();
@@ -51,7 +52,9 @@ class VzPicoSys
     float  lastVoltageVal;
     bool   isOnBattery;
 
-    char currentTime[24];
+    char   currentTime[24];
+    uint   curYear;
+    time_t dstOn, dstOff, endOfYear;
 };
 
 #endif // VZ_PICO_SYS_H

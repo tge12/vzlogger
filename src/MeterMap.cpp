@@ -73,7 +73,7 @@ void MeterMap::start() {
 		}
 		_thread_running = true;
 #else // VZ_USE_THREADS
-  lastRead = 0;
+  nextDue = time(NULL) + _meter->interval();
 #endif // VZ_USE_THREADS
 	} else {
 		print(log_info, "Meter for protocol '%s' is disabled. Skipping.", _meter->name(),
@@ -127,9 +127,12 @@ void MeterMap::registration() {
 
 void MeterMap::read()
 {
+  if(! _meter->isEnabled()) { return; }
+
   time_t tStart = time(NULL);
 
   Meter::Ptr mtr = this->meter();
+  nextDue = time(NULL) + mtr->interval();
   time_t aggIntEnd;
   const meter_details_t * details = meter_get_details(mtr->protocolId());
   size_t n = 0;
@@ -217,7 +220,7 @@ void MeterMap::read()
             // print(log_debug, "found channel", mtr->name());
             if ((*ch)->time_ms() < rds[i].time_ms())
             {
-              (*ch)->last(&rds[i]);
+              (*ch)->last(rds[i]);
             }
 
             print(log_info, "Adding reading to queue (value=%.2f ts=%lld)",
@@ -253,10 +256,6 @@ void MeterMap::read()
   this->sendData();
 #endif // VZ_PICO
 
-#ifndef VZ_USE_THREADS
-  lastRead = time(NULL);
-#endif // not VZ_USE_THREADS
-
   accTimeRead += (time(NULL) - tStart);
   numUsed++;
 }
@@ -264,7 +263,9 @@ void MeterMap::read()
 #ifndef VZ_USE_THREADS
 int MeterMap::isDueIn()
 {
-  int due = meter()->interval() - (time(NULL) - lastRead);
+  if(! _meter->isEnabled()) { meter()->interval(); }
+
+  int due = (nextDue - time(NULL));
   if(due <= 0)
   {
     print(log_debug, "Meter is due.", meter()->name());
@@ -278,13 +279,15 @@ int MeterMap::isDueIn()
 
 bool MeterMap::readyToSend()
 {
+  if(! _meter->isEnabled()) { return false; }
+
   print(log_finest, "Checking for sendable meter data ...", meter()->name());
   for (MeterMap::iterator ch = this->begin(); ch != this->end(); ch++)
   {
     uint numSamples = (*ch)->size();
     if(numSamples > 0)
     {
-      print(log_debug, "%d readings ready for sending.",(*ch)->name(), numSamples);
+      print(log_finest, "%d readings ready for sending.",(*ch)->name(), numSamples);
       return true;
     }
   }
@@ -294,6 +297,8 @@ bool MeterMap::readyToSend()
 
 bool MeterMap::isBusy()
 {
+  if(! _meter->isEnabled()) { return false; }
+
   for (MeterMap::iterator ch = this->begin(); ch != this->end(); ch++)
   {
     if((*ch)->isBusy())
@@ -309,6 +314,8 @@ bool MeterMap::isBusy()
 
 void MeterMap::sendData()
 {
+  if(! _meter->isEnabled()) { return; }
+
   time_t tStart = time(NULL);
   print(log_debug, "Sending data ...", meter()->name());
   for (MeterMap::iterator ch = this->begin(); ch != this->end(); ch++)

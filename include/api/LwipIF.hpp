@@ -29,19 +29,24 @@
 #include <string>
 #include <set>
 
+class VzPicoHttpd;
+
 namespace vz {
 namespace api {
 
 #define VZ_SRV_INIT 0
-#define VZ_SRV_CONNECTING 1
-#define VZ_SRV_READY 2
-#define VZ_SRV_SENDING 3
-#define VZ_SRV_ERROR 4
-#define VZ_SRV_RETRY 5
+#define VZ_SRV_DNS 1
+#define VZ_SRV_CONNECTING 2
+#define VZ_SRV_READY 3
+#define VZ_SRV_SENDING 4
+#define VZ_SRV_ERROR 5
+#define VZ_SRV_RETRY 6
+#define VZ_SRV_SERVER 10
 
 class LwipIF {
   public:
     LwipIF(const char * hn, uint port, const char * apiId, uint timeout = 30);
+    LwipIF(uint port, const char * apiId); // Create Server
     ~LwipIF();
 
     void addHeader(const std::string value);
@@ -54,21 +59,25 @@ class LwipIF {
     uint   postRequest(const char * data, const char * url);
     uint   getPort();
 
-    const char * getResponse();
-    void   setResponse(const char * resp);
+    const char * getData();
+    void   setData(const char * buf);
 
     uint   getState();
     void   setState(uint state);
 
     void               resetPCB();
     struct altcp_pcb * getPCB();
-    void               initPCB();
-    void               deletePCB();
+    void               initPCB(struct altcp_pcb * setPcb = NULL);
+    int                deletePCB();
     const char       * stateStr();
     time_t             getConnectInit();
     const char       * getId();
 
     static vz::api::LwipIF * getInstance(const std::string & url, uint timeout);
+
+    void               initServer(VzPicoHttpd * httpd);
+    void               serverRequest(const char * buf);
+    uint               sendData(const std::string & req);
 
   private:
     std::string        id;
@@ -81,12 +90,15 @@ class LwipIF {
     std::string        hostname;
     int                port;
     std::string        request;
-    std::string        response;
+    std::string        data;
 
     struct altcp_tls_config * tls_config;
     struct altcp_pcb        * pcb;
+    struct altcp_pcb        * serverPcb;
 
     time_t             connectInitiated; // May time out, so retry after a while
+
+    VzPicoHttpd     * httpServer;
 
 }; // class LwipIF
 

@@ -98,12 +98,13 @@ class Channel {
 			throw vz::VZException("No identifier defined.");
 		return _identifier;
 	}
-	int64_t time_ms() const { return _last == NULL ? 0 : _last->time_ms(); }
+	int64_t time_ms() const { return _last.time_ms(); }
+	double lastVal() const { return _last.value(); }
 
 	const char *uuid() const { return _uuid.c_str(); }
 	const std::string apiProtocol() { return _apiProtocol; }
 
-	void last(Reading *rd) { _last = rd; }
+	void last(Reading & rd) { _last = rd; }
 	void push(const Reading &rd) { _buffer->push(rd); }
 	std::string dump() { return _buffer->dump(); }
 	Buffer::Ptr buffer() { return _buffer; }
@@ -142,7 +143,7 @@ class Channel {
 	Buffer::Ptr _buffer; // circular queue to buffer readings
 
 	ReadingIdentifier::Ptr _identifier; // channel identifier (OBIS, string)
-	Reading *_last;                     // most recent reading
+	Reading _last;                      // most recent reading
 
 #ifdef VZ_USE_THREADS
 	pthread_cond_t condition; // pthread syncronization to notify logging thread and local webserver
