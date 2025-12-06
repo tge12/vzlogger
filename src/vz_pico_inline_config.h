@@ -15,7 +15,7 @@ static const char * wifiSSID = "TODO";
 static const char * wifiPW   = "TODO";
 static const char * myHostname   = "TODO";
 
-static const uint wifiStopTime = 60;       // Shutdown WiFi is at least 60s down from now on, else not worth it
+static const uint wifiStopTime = 60;       // Shutdown WiFi if at least 60s from now on, else not worth it
 static const uint lowCPUfactor = 20;       // Energy-saving low CPU speed, results in 6Mhz (default is 125MHz)
 static const uint sendDataInterval = 300;  // Send data not more often than 5min, immediately if 0
 

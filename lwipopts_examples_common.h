@@ -50,8 +50,8 @@
 #define DHCP_DOES_ARP_CHECK         0
 #define LWIP_DHCP_DOES_ACD_CHECK    0
 
-#define MEM_DEBUG                   LWIP_DBG_ON
-#define MEMP_DEBUG                  LWIP_DBG_ON
+#define MEM_DEBUG                   LWIP_DBG_OFF
+#define MEMP_DEBUG                  LWIP_DBG_OFF
 #define DNS_DEBUG                   LWIP_DBG_OFF
 #define ETHARP_DEBUG                LWIP_DBG_OFF
 

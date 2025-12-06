@@ -28,8 +28,27 @@
 #include "VzPicoWifi.h"
 #include <Ntp.hpp>
 
-static const char * statusTxt[] = { "Wifi down", "Connected", "Connection failed",
-                                    "No matching SSID found", "Authentication failure" };
+/* Can be:
+  * CYW43_LINK_DOWN         (0)     ///< link is down
+  * CYW43_LINK_JOIN         (1)     ///< Connected to wifi
+  * CYW43_LINK_NOIP         (2)     ///< Connected to wifi, but no IP address
+  * CYW43_LINK_UP           (3)     ///< Connected to wifi with an IP address
+  * CYW43_LINK_FAIL         (-1)    ///< Connection failed
+  * CYW43_LINK_NONET        (-2)    ///< No matching SSID found (could be out of range, or down)
+  * CYW43_LINK_BADAUTH      (-3)    ///< Authenticatation failure
+  return code will be +=3 and yields index in statusTxt array below
+  NOIP and UP will be return only by cyw43_tcpip_link_status(), all others also by cyw43_wifi_link_status()
+*/
+static const char * statusTxt[] =
+{
+  "Authentication failure",
+  "No matching SSID found",
+  "Connection failed",
+  "WiFi link down",
+  "WiFi connected",
+  "WiFi connected - no IP address",
+  "WiFi connected - has IP address"
+};
 static const char * wifiLogId = "wifi";
 
 VzPicoWifi::VzPicoWifi(const char * hn, uint numRetries, uint timeout) : sysRefTS(0), firstTime(true), numUsed(0), accTimeConnecting(0), accTimeUp(0), accTimeDown(0), initialized(false), ntp(NULL)
@@ -62,7 +81,7 @@ bool VzPicoWifi::enable(uint enableRetries)
 
   if(initialized)
   {
-    int linkStatus = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+    int linkStatus = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
     print(log_debug, "Not initializing WiFi - already done. Link status: %d", wifiLogId, linkStatus);
   }
   else
@@ -108,10 +127,9 @@ bool VzPicoWifi::enable(uint enableRetries)
       int32_t rssi;
       uint8_t mac[6];
       
-// TODO Possibly add cyw43_arch_lwip_begin and end here?
       cyw43_wifi_get_mac(&cyw43_state, CYW43_ITF_STA, mac);
       cyw43_wifi_get_rssi(&cyw43_state, &rssi);
-      cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+      cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
 
       print(log_info, "WiFi '%s' connected. Signal: %d, MAC: %02x:%02x:%02x:%02x:%02x:%02x, IP: %s", wifiLogId, wifiSSID, rssi,
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], ipaddr_ntoa(&cyw43_state.netif[CYW43_ITF_STA].ip_addr));
@@ -126,6 +144,8 @@ bool VzPicoWifi::enable(uint enableRetries)
       this->ledOn(10); // Turn off
       return true;
     }
+
+    // Try again, blink LED
     cyw43_arch_lwip_end();
     this->ledOn(10); // Turn off
     sleep_ms(1000);
@@ -188,16 +208,25 @@ void VzPicoWifi::disable()
 
 time_t VzPicoWifi::getSysRefTime() { return sysRefTS; }
 
+bool VzPicoWifi::isInitialized() { return initialized; }
 bool VzPicoWifi::isConnected()
 {
   if(! initialized) { return false; }
 
   cyw43_arch_lwip_begin();
-  int linkStatus = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+  int linkStatus = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
   cyw43_arch_lwip_end();
 
-  print(log_finest, "WiFi link status: %s (%d).", wifiLogId, statusTxt[linkStatus], linkStatus);
-  return (linkStatus == CYW43_LINK_JOIN);
+  if(linkStatus >= -3 && linkStatus <= 3)
+  {
+    print(log_finest, "WiFi link status: %s (%d).", wifiLogId, statusTxt[linkStatus + 3], linkStatus);
+  }
+  else
+  {
+    print(log_finest, "WiFi link status: %d.", wifiLogId, linkStatus);
+  }
+
+  return (linkStatus == CYW43_LINK_UP);
 }
 
 void VzPicoWifi::printStatistics(log_level_t logLevel)

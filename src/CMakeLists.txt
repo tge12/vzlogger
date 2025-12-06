@@ -6,9 +6,10 @@
 
 option(VZ_BUILD_ON_PICO "Build on pico" ON)
 # add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_emonlib.h")
-add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_brunnen.h")
+# add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_brunnen.h")
 # add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_brunnen_mini.h")
-# add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_w1th_schlazi.h")
+add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_w1th_schlazi.h")
+# add_compile_options(-DVZ_PICO_CUSTOM_CONFIG="vz_pico_debug.h")
 
 option(LOCAL_SUPPORT "Micro-httpd" ON)
 option(VZ_USE_THREADS "Use threads" ON)
@@ -38,7 +39,7 @@ if(VZ_BUILD_ON_PICO)
   message(STATUS "Building VZ for Raspberry Pico ...")
 
 # Set this is building for a RPi Pico 1:
-add_compile_options(-DPICO_RP2040)
+# add_compile_options(-DPICO_RP2040)
 
   include_directories(${CMAKE_SOURCE_DIR}/include)
   include_directories(${CMAKE_SOURCE_DIR}/libs)
@@ -108,7 +109,7 @@ add_compile_options(-DPICO_RP2040)
 
   set(VZ_USE_FSYS_SD OFF)
   set(VZ_USE_FSYS_LITTLE OFF)
-  set(VZ_USE_LOCAL_GUI ON)
+  set(VZ_USE_LOCAL_GUI OFF)
 
 else(VZ_BUILD_ON_PICO)
   add_compile_options(-DVZ_USE_THREADS=1)

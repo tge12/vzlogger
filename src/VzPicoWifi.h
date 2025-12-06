@@ -41,6 +41,7 @@ class VzPicoWifi
     bool   enable(uint retries = 0);
     void   disable();
     time_t getSysRefTime();
+    bool   isInitialized();
     bool   isConnected();
     void   printStatistics(log_level_t logLevel);
     void   ledOn(uint msecs = 0);

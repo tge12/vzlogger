@@ -132,7 +132,14 @@ void MeterMap::read()
   time_t tStart = time(NULL);
 
   Meter::Ptr mtr = this->meter();
-  nextDue = time(NULL) + mtr->interval();
+
+  // Advance "nextDue", always in intervals. Normally this should be just one loop cycle here, but just in case
+  do
+  {
+    nextDue += mtr->interval();
+  }
+  while(nextDue < time(NULL));
+
   time_t aggIntEnd;
   const meter_details_t * details = meter_get_details(mtr->protocolId());
   size_t n = 0;

@@ -289,7 +289,11 @@ uint vz::api::LwipIF::sendData(const std::string & req)
   err_t err = altcp_write(pcb, req.c_str(), strlen(req.c_str()), TCP_WRITE_FLAG_COPY);
   if (err == ERR_OK)
   {
-    state = VZ_SRV_SENDING;
+    // SERVER remains SERVER
+    if(state != VZ_SRV_SERVER)
+    {
+      state = VZ_SRV_SENDING;
+    }
     print(log_debug, "Flushing Lwip output ...", id.c_str());
     err = altcp_output(pcb);
   }
@@ -415,6 +419,8 @@ static err_t vz_altcp_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *p, err
     {
       // This is a HTTP server ... see what the client wants:
       ai->serverRequest(buf);
+      pbuf_free(p);
+      return ERR_OK;
     }
   }
 

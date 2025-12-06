@@ -220,7 +220,8 @@ void vz::api::Volkszaehler::send()
       return;
     }
 
-    while(_api->getState() == VZ_SRV_SENDING)
+    time_t startSend = time(NULL);
+    while((_api->getState() == VZ_SRV_SENDING) && ((time(NULL) - startSend) < _curlTimeout))
     {
       print(log_debug, "Waiting for response ...", channel()->name());
       sleep_ms(1000);
@@ -235,7 +236,8 @@ void vz::api::Volkszaehler::send()
       // Cause a reconnect at next cycle:
       _api->setState(VZ_SRV_INIT);
 
-      // TODO Do we need to drop the data to avoid duplicates?
+      // Drop data to avoid duplicates, possibly the data has arrived but the response was lost.
+      // There is some duplicate handling in api_parse_exception() but this just drops the first tuple only
       print(log_debug, "Dropping %d values", channel()->name(), _values.size());
       _values.clear();
 
@@ -262,7 +264,7 @@ void vz::api::Volkszaehler::send()
       {
         print(log_debug, "HTTP result: %d %s", channel()->name(), http_code, buf);
       }
-      else if((sscanf(resp, "%[^:]: %[^\n]\n", buf, buf2) == 2) && (buf[0] != '{')) // curly brace confuses vi }
+      else if((sscanf(resp, "%[a-zA-Z-]: %[^\n]\n", buf, buf2) == 2) && (buf[0] != '{')) // curly brace confuses vi }
       {
         print(log_debug, "HTTP header: %s %s", channel()->name(), buf, buf2);
       }

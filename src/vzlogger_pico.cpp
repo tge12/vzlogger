@@ -165,6 +165,7 @@ int main()
       wasSendingData = isSendingData;
       isSendingData  = false;
 
+      int  nextSend = ((sendDataComplete + sendDataInterval) - time(NULL));
       int  nextDue  = 0;
       bool clockSpeedIsDefault = vzPicoSys->isClockSpeedDefault();
 
@@ -186,9 +187,11 @@ int main()
             }
 
             // Make sure, the reading is not interrupted by some network activity
-            cyw43_arch_lwip_begin();
+            // However, only if WiFi is on (freezes otherwise)
+            bool wifiInitialized = wifi.isInitialized();
+            if(wifiInitialized) { cyw43_arch_lwip_begin(); }
             it->read();
-            cyw43_arch_lwip_end();
+            if(wifiInitialized) { cyw43_arch_lwip_end(); }
           }
           else if(nextDue == 0 || due < nextDue)
           {
@@ -202,7 +205,7 @@ int main()
           // If there is data to be sent + last sending is longer ago than "sendDataInterval"
           // --------------------------------------------------------------
 
-          if(it->readyToSend() && ((time(NULL) - sendDataComplete) > sendDataInterval))
+          if(it->readyToSend() && (nextSend <= 0))
           {
             // Also, WiFi does not work right on lower speeds
             if(! clockSpeedIsDefault)
@@ -238,7 +241,14 @@ int main()
       if((nextDue > 0) && ((cycle % 10) == 0))
       {
         print(log_info, "MEM: Used: %ld, Free: %ld", "", vzPicoSys->getMemUsed(), vzPicoSys->getMemFree());
-        print(log_info, "Cycle %d: All meters and pending I/O processed. Next due: %ds. Napping ...", "", cycle, nextDue);
+        if(nextSend > 0)
+        {
+          print(log_info, "Cycle %d: All meters and pending I/O processed. Next due: %ds, next send: %ds. Napping ...", "", cycle, nextDue, nextSend);
+        }
+        else
+        {
+          print(log_info, "Cycle %d: All meters and pending I/O processed. Next due: %ds. Napping ...", "", cycle, nextDue);
+        }
       }
 
       // --------------------------------------------------------------
@@ -248,7 +258,7 @@ int main()
       // --------------------------------------------------------------
 
       // In low-power mode, do not even query WiFi
-      if(clockSpeedIsDefault && wifi.isConnected())
+      if(clockSpeedIsDefault && wifi.isInitialized())
       {
         // Blink LED for 10ms (depends on WiFi, so only if WiFi is on) saying: "WiFi is on"
         wifi.ledOn(10);
@@ -263,8 +273,17 @@ int main()
           print(log_info, "Power Source: %s Voltage: %.2f", "", (isOnBattery ? "Battery" : "USB"), voltage);
         }
 
+        // At least one channel was busy sending, but now not anymore:
+        if(wasSendingData && ! isSendingData)
+        {
+          sendDataComplete = time(NULL);
+        }
+
+        // TODO: Make these metrics available as a meter (?)
+        wifi.printStatistics(log_finest);
+
         // Must do this, while WiFi is on
-        if(syncTime)
+        if(syncTime && wifi.isConnected())
         {
           sysRefTime = wifi.syncTime();
           syncTime = false;
@@ -278,19 +297,10 @@ int main()
         {
           wifi.disable();
         }
-
-        // At least one channel was busy sending, but now not anymore:
-        if(wasSendingData && ! isSendingData)
-        {
-          sendDataComplete = time(NULL);
-        }
-
-        // TODO: Make these metrics available as a meter (?)
-        wifi.printStatistics(log_finest);
       }
 
       // Reduce clock speed after everything WiFi or peripheral is done
-      if(clockSpeedIsDefault && ! wifi.isConnected())
+      if(clockSpeedIsDefault && ! wifi.isInitialized())
       {
         if(lowCPUfactor > 0)
         {
