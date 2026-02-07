@@ -55,6 +55,7 @@ class ApiIF {
 
         // Override as needed
 	virtual bool isBusy() const { return false; }
+	virtual void checkResponse() { }
 
   protected:
 	Channel::Ptr channel() { return _ch; }

@@ -129,6 +129,7 @@ class Channel {
 
 	int duplicates() const { return _duplicates; }
         bool isBusy() const;
+        void checkResponse();
 
   private:
 	static int instances;

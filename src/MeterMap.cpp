@@ -317,6 +317,15 @@ bool MeterMap::isBusy()
   print(log_finest, "Network not busy.", meter()->name());
   return false;
 }
+
+void MeterMap::checkResponse()
+{
+  if(! _meter->isEnabled()) { return; }
+  for (MeterMap::iterator ch = this->begin(); ch != this->end(); ch++)
+  {
+    (*ch)->checkResponse();
+  }
+}
 #endif // not VZ_USE_THREADS
 
 void MeterMap::sendData()

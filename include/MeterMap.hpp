@@ -100,6 +100,7 @@ class MeterMap {
         int  isDueIn();
         bool readyToSend();
         bool isBusy();
+        void checkResponse();
 #endif // VZ_USE_THREADS
         void sendData();
         void printStatistics(log_level_t logLevel);

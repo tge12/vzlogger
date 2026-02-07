@@ -93,6 +93,8 @@ int main()
       fprintf(stderr, "*** ERROR: Failed to get NTP time.\n");
       throw vz::VZException("ERROR: Failed to get NTP time.");
       // TODO - we should retry infinitely
+// Exception will trigger panic function, which in turn should reboot ...
+
     }
 
     // --------------------------------------------------------------
@@ -228,7 +230,8 @@ int main()
           else if(it->isBusy())
           {
             // Data sent, but no response yet - make sure, WiFi does not go down
-            isSendingData = true;
+            it->checkResponse();
+            isSendingData = it->isBusy();
           }
         }
       }

@@ -16,6 +16,8 @@
 #define NTP_TEST_TIME (30 * 1000)
 #define NTP_RESEND_TIME (10 * 1000)
 
+#define NTP_OVERALL_TIMEOUT 60
+
 #include <common.h>
 #include <Ntp.hpp>
 
@@ -61,7 +63,6 @@ time_t Ntp::queryTime()
   // Init + return in case of errors
   theTime = 0;
 
-  // TODO TGE ??? if (absolute_time_diff_us(get_absolute_time(), ntp_test_time) < 0 && ! request_sent)
   if (! request_sent)
   {
     print(log_debug, "Setting timer ...", "");
@@ -85,17 +86,27 @@ time_t Ntp::queryTime()
       this->result(-1, NULL);
       return 0;
     }
-
-    print(log_debug, "DNS resolution of NTP server triggered ...", "");
-    request_sent = true;
+    else
+    {
+      print(log_debug, "DNS resolution of NTP server triggered ...", "");
+    }
   }
 
   // Wait for completion
-  while(request_sent)
+  time_t startTime = time(NULL);
+  while(request_sent && ((time(NULL) - startTime) < NTP_OVERALL_TIMEOUT))
   {
     print(log_debug, "Waiting for NTP time ...", "");
     sleep_ms(1000);
   }
+
+  if(request_sent)
+  {
+    // Not critical, try later again
+    print(log_debug, "NTP timed out.", "");
+    this->result(-1, NULL);
+  }
+
   return theTime;
 }
 
@@ -117,10 +128,8 @@ void Ntp::result(int status, time_t * result)
     cancel_alarm(ntp_resend_alarm);
     ntp_resend_alarm = 0;
   }
-  ntp_test_time = make_timeout_time_ms(NTP_TEST_TIME);
   request_sent = false;
 }
-
 
 // Make an NTP request
 void Ntp::request()
@@ -132,6 +141,7 @@ void Ntp::request()
   memset(req, 0, NTP_MSG_LEN);
   req[0] = 0x1b;
   udp_sendto(ntp_pcb, p, &ntp_server_address, NTP_PORT);
+  request_sent = true;
   pbuf_free(p);
   cyw43_arch_lwip_end();
 }

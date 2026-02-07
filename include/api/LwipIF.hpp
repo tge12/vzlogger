@@ -39,8 +39,9 @@ namespace api {
 #define VZ_SRV_CONNECTING 2
 #define VZ_SRV_READY 3
 #define VZ_SRV_SENDING 4
-#define VZ_SRV_ERROR 5
-#define VZ_SRV_RETRY 6
+#define VZ_SRV_REPLIED 5
+#define VZ_SRV_ERROR 6
+#define VZ_SRV_RETRY 7
 #define VZ_SRV_SERVER 10
 
 class LwipIF {
@@ -56,8 +57,9 @@ class LwipIF {
     // Null values for connect can be used as reconnect, if already set
     void   connect();
     void   reconnect();
-    uint   postRequest(const char * data, const char * url);
+    uint   postRequest(const char * channel, const char * data, const char * url);
     uint   getPort();
+    const char * getChannel() const;
 
     const char * getData();
     void   setData(const char * buf);
@@ -71,6 +73,7 @@ class LwipIF {
     int                deletePCB();
     const char       * stateStr();
     time_t             getConnectInit();
+    time_t             getSendInit();
     const char       * getId();
 
     static vz::api::LwipIF * getInstance(const std::string & url, uint timeout);
@@ -91,14 +94,16 @@ class LwipIF {
     int                port;
     std::string        request;
     std::string        data;
+    std::string        channel;
 
     struct altcp_tls_config * tls_config;
     struct altcp_pcb        * pcb;
     struct altcp_pcb        * serverPcb;
 
     time_t             connectInitiated; // May time out, so retry after a while
+    time_t             sendInitiated; // May time out, so retry after a while
 
-    VzPicoHttpd     * httpServer;
+    VzPicoHttpd      * httpServer;
 
 }; // class LwipIF
 

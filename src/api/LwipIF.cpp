@@ -50,7 +50,7 @@ static err_t vz_altcp_accept(void * arg, struct altcp_pcb * client_pcb, err_t er
 static const char * logMsgId = "lwip";
 
 vz::api::LwipIF::LwipIF(const char * hn, uint p, const char * apiId, uint t) :
-  id(apiId), pcb(NULL), tls_config(NULL), timeout(t), state(VZ_SRV_INIT), connectInitiated(0),
+  id(apiId), pcb(NULL), tls_config(NULL), timeout(t), state(VZ_SRV_INIT), connectInitiated(0), sendInitiated(0),
   hostname(hn), port(p), serverPcb(NULL)
 {
   print(log_debug, "Creating LwipIF instance (timeout: %d)...", id.c_str(), timeout);
@@ -174,6 +174,7 @@ const char * vz::api::LwipIF::stateStr()
   return stateStrings[state];
 }
 time_t vz::api::LwipIF::getConnectInit() { return connectInitiated; }
+time_t vz::api::LwipIF::getSendInit()    { return sendInitiated; }
 
 // ==============================
 
@@ -230,13 +231,16 @@ void vz::api::LwipIF::resetPCB() { pcb = NULL; }
 
 // ==============================
 
-uint vz::api::LwipIF::postRequest(const char * data, const char * url)
+const char * vz::api::LwipIF::getChannel() const { return channel.c_str(); }
+uint vz::api::LwipIF::postRequest(const char * ch, const char * data, const char * url)
 {
   if(state != VZ_SRV_READY)
   {
     print(log_debug, "Not sending request - state: %d", id.c_str(), state);
     return state;
   }
+
+  channel = ch;
 
   print(log_debug, "postRequest req buffer: %d (%p)", id.c_str(), request.capacity(), request.c_str());
   char buf[128];
@@ -271,6 +275,7 @@ uint vz::api::LwipIF::postRequest(const char * data, const char * url)
       // State already set to SENDING above - must be done up there, because sometimes the response arrives so fast
       // that the recv already set the state before this point here ...
       print(log_debug, "Sending request complete", id.c_str());
+      sendInitiated = time(NULL);
       break;
     default:
       // Error - just try again ...
@@ -425,7 +430,7 @@ static err_t vz_altcp_recv(void *arg, struct altcp_pcb *pcb, struct pbuf *p, err
   }
 
   pbuf_free(p);
-  ai->setState(VZ_SRV_READY);
+  ai->setState(VZ_SRV_REPLIED);
   return ERR_OK;
 }
 

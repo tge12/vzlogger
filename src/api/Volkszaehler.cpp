@@ -154,44 +154,176 @@ vz::api::Volkszaehler::~Volkszaehler() {
   free(response.data);
 }
 
-void vz::api::Volkszaehler::send()
+void vz::api::Volkszaehler::checkResponse()
 {
-	long int http_code = 0;
+#ifdef VZ_PICO
+  // Either just sent something and there is already a reply, or waiting for response from previous call
+  uint state = _api->getState();
+  if(state != VZ_SRV_REPLIED)
+  {
+    print(log_debug, "Waiting for response ...", channel()->name());
+    return;
+  }
 
-        print(log_debug, "Volkszaehler API sending data ...", channel()->name());
+  if(strcmp(channel()->name(), _api->getChannel()) != 0)
+  {
+    print(log_debug, "Waiting for other channel '%s' ...", channel()->name(), _api->getChannel());
+    return;
+  }
+
+  const char * resp = _api->getData();
+  if(resp == NULL || strlen(resp) == 0)
+  {
+    print(log_error, "NULL response", channel()->name());
+    _api->setState(VZ_SRV_INIT);
+    return;
+  }
+
+  long int http_code = 0;
+  uint errCode = 0;
+
+  // If we are here, there must be a response - scan and remove headers
+  uint num;
+  char buf[128], buf2[128];
+  while(strlen(resp) > 0)
+  {
+    if(resp[0] == '\r' && resp[1] == '\n')
+    {
+      print(log_debug, "HTTP empty line", channel()->name());
+    }
+    else if(sscanf(resp, "HTTP/%*d.%*d %d %[^\n]\n", &http_code, buf) == 2)
+    {
+      print(log_debug, "HTTP result: %d %s", channel()->name(), http_code, buf);
+    }
+    else if((sscanf(resp, "%[a-zA-Z-]: %[^\n]\n", buf, buf2) == 2) && (buf[0] != '{')) // curly brace confuses vi }
+    {
+      print(log_debug, "HTTP header: %s %s", channel()->name(), buf, buf2);
+    }
+    else
+    {
+      print(log_debug, "HTTP response payload: %s", channel()->name(), resp);
+      // ORIG response.data = strdup(resp);
+      if(response.size <= strlen(resp))
+      {
+        response.size = (strlen(resp) + 1);
+        response.data = (char *) realloc(response.data, response.size);
+      }
+      strcpy(response.data, resp);
+      break;
+    }
+
+    resp = strchr(resp, '\n') + 1;
+  }
+
+  this->processResponse(http_code, errCode);
+  _api->setState(VZ_SRV_READY);
+  return;
+#endif // VZ_PICO
+}
+
+void vz::api::Volkszaehler::processResponse(long int http_code, uint errCode)
+{
+  uint errOK = 0;
+#ifndef VZ_PICO
+  errOK = CURLE_OK;
+#endif // not VZ_PICO
+
+  if (errCode == errOK && http_code == 200)
+  {
+    // everything is ok
+    print(log_debug, "CURL Request succeeded with code: %i", channel()->name(), http_code);
+    if (_values.size() <= (size_t)MAX_CHUNK_SIZE)
+    {
+      print(log_finest, "emptied all (%d) values", channel()->name(), _values.size());
+      _values.clear();
+    }
+    else
+    {
+      // remove only the first MAX_CHUNK_SIZE values:
+      for (int i = 0; i < MAX_CHUNK_SIZE; ++i)
+        _values.pop_front();
+      print(log_finest, "emptied MAX_CHUNK_SIZE values", channel()->name());
+    }
+
+    // clear buffer-readings
+    // channel()->buffer.sent = last->next;
+  }
+  else
+  {
+    // error
+    if (errCode != errOK)
+    {
+      print(log_alert, "CURL: %s", channel()->name(), errMsg.c_str());
+    }
+    else if (http_code != 200)
+    {
+      char err[255];
+      api_parse_exception(response, err, 255);
+      print(log_alert, "CURL Error from middleware: %s", channel()->name(), err);
+    }
+  }
 
 #ifndef VZ_PICO
-	CURLcode curl_code;
-#endif // VZ_PICO
+  // householding
+  free(response.data);
 
-        errMsg = "OK";
-        uint errOK = 0;
-        uint errCode = 0;
+  if ((errCode != errOK || http_code != 200))
+  {
+    print(log_info, "Waiting %i secs for next request due to previous failure",
+          channel()->name(), options.retry_pause());
+    sleep(options.retry_pause());
+  }
+#endif // not VZ_PICO
+}
+
+void vz::api::Volkszaehler::send()
+{
+  long int http_code = 0;
+  uint errCode = 0;
+  errMsg = "OK";
+
+  print(log_debug, "Volkszaehler API sending data ...", channel()->name());
 
 #ifdef VZ_PICO
-    // Throws exception
-    uint state = _api->getState();
-    if((state == VZ_SRV_CONNECTING) && ((time(NULL) - _api->getConnectInit()) > (_curlTimeout * 2)))
-    {
-      print(log_debug, "Volkszaehler API connecting timed out (%d).", channel()->name(), (_curlTimeout * 2));
-      state = VZ_SRV_INIT;
-    }
-    
-    if(state == VZ_SRV_INIT)
-    {
-      // May happen, if the server closed the connection. Reconnect ...
-      print(log_debug, "Volkszaehler API reconnecting ...", channel()->name());
-      _api->reconnect();
+  // Throws exception
+  uint state = _api->getState();
+  if((state == VZ_SRV_CONNECTING) && ((time(NULL) - _api->getConnectInit()) > (_curlTimeout * 2)))
+  {
+    print(log_debug, "Volkszaehler API connecting timed out (%d).", channel()->name(), (_curlTimeout * 2));
+    state = VZ_SRV_INIT;
+  }
 
-      // That will happen asynchronously, so cannot send anything right now
-      return;
-    }
+  if((state == VZ_SRV_SENDING) && ((time(NULL) - _api->getSendInit()) > (_curlTimeout * 2)))
+  {
+    print(log_debug, "Volkszaehler API sending data timed out (%d).", channel()->name(), (_curlTimeout * 2));
 
-    if(state != VZ_SRV_READY)
-    {
-      print(log_debug, "NOT sending request - API in state %s", channel()->name(), _api->stateStr());
-      return;
-    }
+/* TGE TODO
+    // Drop data to avoid duplicates, possibly the data has arrived but the response was lost.
+    // There is some duplicate handling in api_parse_exception() but this just drops the first tuple only
+    print(log_debug, "Dropping %d values", channel()->name(), _values.size());
+    _values.clear();
+*/
+    state = VZ_SRV_INIT;
+  }
+
+  if(state == VZ_SRV_CONNECTING || state == VZ_SRV_SENDING)
+  {
+    print(log_debug, "Volkszaehler API still in state %d. Cannot send yet ...", channel()->name(), state);
+    return;
+  }
+
+  if(state == VZ_SRV_INIT)
+  {
+    // May happen, if the server closed the connection or timed out. Reconnect ...
+    print(log_debug, "Volkszaehler API reconnecting ...", channel()->name());
+    _api->reconnect();
+
+    // That will happen asynchronously, so cannot send anything right now
+    return;
+  }
+
+  if(state == VZ_SRV_READY)
+  {
 #endif // VZ_PICO
 
     if(channel()->buffer()->size() == 0)
@@ -202,17 +334,20 @@ void vz::api::Volkszaehler::send()
 
     api_json_tuples(channel()->buffer());
     const char * json_str = outputData.c_str();
-	if (json_str == NULL || strcmp(json_str, "null") == 0) {
-		print(log_debug, "JSON request body is null. Nothing to send now.", channel()->name());
-		return;
-	}
+    if (json_str == NULL || strcmp(json_str, "null") == 0)
+    {
+      print(log_debug, "JSON request body is null. Nothing to send now.", channel()->name());
+      return;
+    }
 
 #ifdef VZ_PICO
     // If we are here, the API is ready and there is something to send - do it
 
     print(log_info, "POSTing %d tuples ...", channel()->name(), _values.size());
-    state =_api->postRequest(json_str, _url.c_str());
+    state =_api->postRequest(channel()->name(), json_str, _url.c_str());
     print(log_debug, "POST request in state %d", channel()->name(), state);
+
+    // RETRY means, temporarily out-of-mem. Try again.
     if(state == VZ_SRV_RETRY)
     {
       print(log_info, "POSTing to be retried: %d", channel()->name(), state);
@@ -220,71 +355,25 @@ void vz::api::Volkszaehler::send()
       return;
     }
 
-    time_t startSend = time(NULL);
-    while((_api->getState() == VZ_SRV_SENDING) && ((time(NULL) - startSend) < _curlTimeout))
-    {
-      print(log_debug, "Waiting for response ...", channel()->name());
-      sleep_ms(1000);
-    }
-
-    // May be READY after receiving data || INIT after the server closed the connection
-    // Anything else means, we tried to send something but no idea whether it arrived or not ...
+    // State can now be:
+    // - INIT - error or server closed connection
+    // - SENDING - waiting for response
+    // - REPLIED - response arrived
     state = _api->getState();
-    if(state != VZ_SRV_READY && state != VZ_SRV_INIT)
+    if(state != VZ_SRV_INIT && state != VZ_SRV_SENDING && state != VZ_SRV_REPLIED)
     {
-      print(log_warning, "Sending/response timed out - API in state %s", channel()->name(), _api->stateStr());
+      print(log_error, "API in unexpected state %s. Resetting.", channel()->name(), _api->stateStr());
       // Cause a reconnect at next cycle:
       _api->setState(VZ_SRV_INIT);
-
-      // Drop data to avoid duplicates, possibly the data has arrived but the response was lost.
-      // There is some duplicate handling in api_parse_exception() but this just drops the first tuple only
-      print(log_debug, "Dropping %d values", channel()->name(), _values.size());
-      _values.clear();
-
       return;
     }
+  }
 
-    const char * resp = _api->getData();
-    if(resp == NULL || strlen(resp) == 0)
-    {
-      print(log_error, "NULL response", channel()->name());
-      return;
-    }
-
-    // Scan and remove headers
-    uint num;
-    char buf[128], buf2[128];
-    while(strlen(resp) > 0)
-    {
-      if(resp[0] == '\r' && resp[1] == '\n')
-      {
-        print(log_debug, "HTTP empty line", channel()->name());
-      }
-      else if(sscanf(resp, "HTTP/%*d.%*d %d %[^\n]\n", &http_code, buf) == 2)
-      {
-        print(log_debug, "HTTP result: %d %s", channel()->name(), http_code, buf);
-      }
-      else if((sscanf(resp, "%[a-zA-Z-]: %[^\n]\n", buf, buf2) == 2) && (buf[0] != '{')) // curly brace confuses vi }
-      {
-        print(log_debug, "HTTP header: %s %s", channel()->name(), buf, buf2);
-      }
-      else
-      {
-        print(log_debug, "HTTP response payload: %s", channel()->name(), resp);
-        // ORIG response.data = strdup(resp);
-        if(response.size <= strlen(resp))
-        {
-          response.size = (strlen(resp) + 1);
-          response.data = (char *) realloc(response.data, response.size);
-        }
-        strcpy(response.data, resp);
-        break;
-      }
-  
-      resp = strchr(resp, '\n') + 1;
-    }
+  this->checkResponse();
 
 #else // VZ_PICO
+  // If CURL is available (non-PICO), we send synchronously (in thread):
+
 	_api.curl = curlSessionProvider ? curlSessionProvider->get_easy_session(_middleware)
 					: 0; // TODO add option to use parallel sessions. Simply add uuid() to the key.
 	if (!_api.curl) {
@@ -308,56 +397,18 @@ void vz::api::Volkszaehler::send()
 	curl_easy_setopt(_api.curl, CURLOPT_WRITEFUNCTION, curl_custom_write_callback);
 	curl_easy_setopt(_api.curl, CURLOPT_WRITEDATA, (void *)&response);
 
-	curl_code = curl_easy_perform(_api.curl);
+	CURLcode curl_code = curl_easy_perform(_api.curl);
 	curl_easy_getinfo(_api.curl, CURLINFO_RESPONSE_CODE, &http_code);
 
 	if (curlSessionProvider)
 		curlSessionProvider->return_session(_middleware, _api.curl);
 
-        errOK   = CURLE_OK;
-        errCode = curl_code;
-        errMsg  = curl_easy_strerror(curl_code);
+      errCode = curl_code;
+      errMsg  = curl_easy_strerror(curl_code);
+
+  this->processResponse(http_code, errCode);
 
 #endif // VZ_PICO
-
-	// check response
-	if (errCode == errOK && http_code == 200) { // everything is ok
-		print(log_debug, "CURL Request succeeded with code: %i", channel()->name(), http_code);
-		if (_values.size() <= (size_t)MAX_CHUNK_SIZE) {
-			print(log_finest, "emptied all (%d) values", channel()->name(), _values.size());
-			_values.clear();
-		} else {
-			// remove only the first MAX_CHUNK_SIZE values:
-			for (int i = 0; i < MAX_CHUNK_SIZE; ++i)
-				_values.pop_front();
-			print(log_finest, "emptied MAX_CHUNK_SIZE values", channel()->name());
-		}
-		// clear buffer-readings
-		// channel()->buffer.sent = last->next;
-	} else { // error
-		if (errCode != errOK) {
-			print(log_alert, "CURL: %s", channel()->name(), errMsg.c_str());
-		} else if (http_code != 200) {
-			char err[255];
-			api_parse_exception(response, err, 255);
-			print(log_alert, "CURL Error from middleware: %s", channel()->name(), err);
-		}
-	}
-
-	// householding
-#ifndef VZ_PICO
-	free(response.data);
-#endif // not VZ_PICO
-
-	if ((errCode != errOK || http_code != 200)) {
-		print(log_info, "Waiting %i secs for next request due to previous failure",
-			  channel()->name(), options.retry_pause());
-#ifdef VZ_PICO
-  sleep_ms(options.retry_pause() * 1000);
-#else // VZ_PICO
-		sleep(options.retry_pause());
-#endif // VZ_PICO
-	}
 
   print(log_finest, "Volkszaehler API sending data complete.", channel()->name());
 }
@@ -477,9 +528,12 @@ void vz::api::Volkszaehler::api_parse_exception(CURLresponse response, char *err
 			// evaluate error
 			if (err_type == "UniqueConstraintViolationException") {
 				if (err_message.find("Duplicate entry")) {
-					print(log_warning, "Middleware says duplicated value. Removing first entry!",
-						  channel()->name());
-					_values.pop_front();
+					print(log_warning, "Middleware says duplicated value. Removing first entry (out of %d)!",
+						  channel()->name(), _values.size());
+                                        if(_values.size() > 0)
+                                        {
+					  _values.pop_front();
+                                        }
 				}
 			}
 		} else {

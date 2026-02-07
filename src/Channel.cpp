@@ -182,7 +182,6 @@ vz::shared_ptr<vz::ApiIF> Channel::connect(Ptr this_shared)
   return vz::ApiIF::Ptr(new vz::api::Volkszaehler(this_shared, this->options()));
 }
 
-bool Channel::isBusy() const
-{
-  return (api && api->isBusy());
-}
+bool Channel::isBusy() const  { return (api && api->isBusy()); }
+void Channel::checkResponse() { if(api) { api->checkResponse(); } }
+

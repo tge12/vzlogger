@@ -71,6 +71,7 @@ class Volkszaehler : public ApiIF {
 	void send();
 #ifdef VZ_PICO // Otherwise use base-class method
         bool isBusy() const;
+        void checkResponse();
 #endif // VZ_PICO
 
 	void register_device();
@@ -112,6 +113,8 @@ class Volkszaehler : public ApiIF {
 	int64_t _last_timestamp; /**< remember last timestamp */
 	// duplicate support:
 	Reading *_lastReadingSent;
+
+        void processResponse(long int http_code, uint errCode);
 
 }; // class Volkszaehler
 
